@@ -78,3 +78,8 @@ section = current.split('\n:ts_getedition\n', 1)[1].split(') do (', 1)[0]
 rows = [line.replace(':', '\t', 1) for line in section.splitlines() if re.fullmatch(r'\d+:[A-Za-z0-9_]+', line)]
 assert len(rows) > 180
 (DEST / 'tsforge-editions.tsv').write_text('\n'.join(rows) + '\n')
+
+section = current.split('if not defined isThinpc if not defined isltsc for %%# in (', 1)[1].split(') do (', 1)[0]
+rows = ['\t'.join(line.split('_', 2)) for line in section.splitlines() if re.match(r'^[0-9a-f]{8}-', line)]
+assert len(rows) == 17
+(DEST / 'tsforge-esu.tsv').write_text('\n'.join(rows) + '\n')

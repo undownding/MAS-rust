@@ -67,6 +67,9 @@ mod product_selection;
 mod selection_runtime;
 
 mod activation_flow;
+mod esu;
+#[cfg(windows)]
+mod esu_runtime;
 mod kms_cleanup;
 #[cfg(windows)]
 mod windows_context;

@@ -360,3 +360,12 @@ Windows 单项按钮现已接入系统上下文、产品选择、密钥安装和
 117 项本地测试和双平台 Clippy 通过，新增清理目标构建/视图边界测试及 Windows 临时 HKCU 的嵌套删除、幂等与无关数据保留测试。执行链 Windows CI 40119405069 已成功；系统上下文 CI 40119757455 中真实上下文和订阅内存测试通过，pkeyhelper 测试因返回小写 `professional` 而失败；运行时本就忽略大小写，本轮将测试改为相同语义，并补充大小写回退测试，待新 CI。原生激活未进行真实系统验收。
 
 GUI 范围标签、README、版本号同步至 dev.4；更新真实 Linux 预览截图并构建 Windows 本地测试包。此轮只启用 Windows 单项现代分支，不代表 ESU/Office、旧存储、修复及高级菜单已经完成迁移。
+
+
+### ESU 产品筛选与现代执行后端（进行中）
+
+新增 `esu.rs` 与可复现提取的 17 行 ESU 目录，保留许可证 GUID/版本交集、目录顺序、ThinPC 排除、Embedded POS/Standard 优先顺序、LTSC 排除名单和缺失许可证诊断。Windows 10 后加入版本严格要求 build 19045，并分别检查 ServerRdsh 5552、Core 系列/IoTEnterprise 6156、PPIPro 6388 的 UBR 门槛。按上游以本机已安装 GUID 筛选，不把目录注释中的系统名称误当成额外构建限制。
+
+`esu_runtime.rs` 使用原生 SLC 枚举 Windows SKU，以系统包文件识别 Server/Embedded 标志，连接现代 PKEY 安装和 SCID/ZeroCID 执行链。明确拒绝 KMS4k，旧存储返回兼容准备结果；多产品逐项执行并保留每项错误和已完成数量，不将部分成功报告成全部成功。全部成功且包含 Windows 10 Year3/Year6 时，调用系统自带 ClipESUConsumer/ClipESU 后处理（文件不存在则跳过），使用受控参数、无 shell、60 秒超时与退出码检查；未移植这些闭源系统组件本身。
+
+121 项本地测试及双平台 Clippy 通过，新增 ESU UBR 边界、目录交集/顺序、LTSC/Embedded 特例以及批量失败继续与后处理条件测试。Windows 专用测试只读取实际系统包和 SLC 许可证，不执行激活或后处理程序。当前 GUI ESU 按钮仍为兼容入口：Auto 模式的联网/离线判断和公共 SPP 任务重评估尚待接入后再启用。没有界面或测试包变化；本地 dev.4 仍对应上一轮已启用的 Windows 单项流程。
