@@ -667,3 +667,11 @@ ESU 单项的 Vista 分支改为 Rust 编排：核对版本化存储与本机目
 目录不匹配时不安装；安装、映射校验或激活失败均停止，不回退脚本。安装调用失败也会明确提示系统状态可能已经变化，不声称自动回滚。新测试覆盖目标拒绝、调用顺序及各阶段失败停止，197 项 Linux 测试和 Windows GNU 目标 Clippy 通过。
 
 README 和界面范围更新至 dev.14。未执行真实 ESU 密钥安装或激活；GUI 最低系统要求不变。旧版 Office/Host/组合及修复和高级工具仍需迁移。
+
+### Win7/Win8 Office KMS Host 原生分派（v0.6.0-dev.15）
+
+Office KMS Host 单项不再将 build 9600 以下转交兼容脚本。已有目录匹配和 CSVLK 通道校验继续执行，生成密钥安装、ZeroCID 和主机计数使用已迁移的版本化后端，包括 Win7 主副存储与 tokens/注册表联合备份。Vista 仍按上游跳过，Windows KMS Host 和 Office 客户端的旧版兼容边界没有随此改动移除。
+
+方法检查移入可测试的辅助许可策略，在联网和产品处理前拒绝未知存储构建、Win7 StaticCID、KMS4k 和未知选项；Auto 保持 build 26100+ StaticCID、较早版本 ZeroCID。测试覆盖 Win7/Win8/现代构建、方法限制、未知构建与 APPX 范围。198 项 Linux 测试及双目标 Clippy 通过；dev.12/13 Windows CI 40128055731/40128317439 已成功，dev.14 CI 40128735095 仍在运行。
+
+同步 README 表格中的 Vista ESU 旧说明，并更新界面、截图和本地构建。没有执行实际主机许可安装或激活，GUI 最低系统要求不变；此分派仍待旧版实机验收。

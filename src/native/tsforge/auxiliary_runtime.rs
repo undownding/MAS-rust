@@ -44,16 +44,7 @@ pub fn activate(
             .into(),
         ));
     }
-    if scope == Scope::OfficeHost && context.build < 9600 {
-        return Ok(None);
-    }
-    let method = match option {
-        0 if context.build >= 26100 => Method::StaticCid,
-        0 | 2 => Method::ZeroCid,
-        1 => Method::StaticCid,
-        3 => return Err("此功能不支持 KMS4k，请选择 StaticCID 或 ZeroCID".into()),
-        _ => return Err("未知 TSforge 方法".into()),
-    };
+    let method = scope.method(option, context.build)?;
     let method = connectivity::resolve(method, option == 0, || connectivity::connected(report))?;
     if method == Method::Kms4k {
         return Err("Auto 未确认联网，此功能不支持离线 KMS4k，未执行激活".into());

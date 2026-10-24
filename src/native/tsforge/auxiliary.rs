@@ -19,6 +19,27 @@ impl Scope {
             Self::Appx => (9200..=9600).contains(&build),
         }
     }
+    /// Validate the storage generation and method before network or license work.
+    pub fn method(
+        self,
+        option: usize,
+        build: u32,
+    ) -> Result<super::activation_flow::Method, String> {
+        use super::{activation_flow::Method, crypto::Version};
+        if !self.supported(build) {
+            return Err("当前 Windows 版本不支持此许可范围".into());
+        }
+        let version = Version::detect(build).map_err(|e| e.to_string())?;
+        let method = match option {
+            0 if build >= 26100 => Method::StaticCid,
+            0 | 2 => Method::ZeroCid,
+            1 => Method::StaticCid,
+            3 => return Err("此功能不支持 KMS4k，请选择 StaticCID 或 ZeroCID".into()),
+            _ => return Err("未知 TSforge 方法".into()),
+        };
+        super::activation_flow::generated_supported(version, method, false)?;
+        Ok(method)
+    }
     pub fn applications(self) -> &'static [&'static str] {
         match self {
             Self::OfficeHost => &[
@@ -67,6 +88,31 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_host_method_is_checked_before_runtime_work() {
+        use super::super::activation_flow::Method;
+        for build in [7600, 7601, 7602, 9200, 9600, 19045, 26100] {
+            assert_eq!(Scope::OfficeHost.method(2, build).unwrap(), Method::ZeroCid);
+            assert!(Scope::OfficeHost.method(3, build).is_err());
+            assert!(Scope::OfficeHost.method(4, build).is_err());
+            assert_eq!(Scope::OfficeHost.method(1, build).is_ok(), build >= 9200);
+            assert_eq!(
+                Scope::OfficeHost.method(0, build).unwrap(),
+                if build >= 26100 {
+                    Method::StaticCid
+                } else {
+                    Method::ZeroCid
+                }
+            );
+        }
+        for build in [6002, 7603, 9199, 9201] {
+            assert!(Scope::OfficeHost.method(0, build).is_err());
+        }
+        for build in [9200, 9600] {
+            assert_eq!(Scope::Appx.method(1, build).unwrap(), Method::StaticCid);
+        }
+        assert!(Scope::Appx.method(0, 7601).is_err());
+    }
     #[test]
     fn scope_build_boundaries_and_application_ids() {
         assert!(!Scope::OfficeHost.supported(6002));
