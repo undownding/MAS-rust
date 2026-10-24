@@ -16,6 +16,8 @@
 
 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；旧版存储和评估版仍转入兼容引擎，原生失败后不会自动再运行兼容激活。重置与备份恢复也使用 Rust。旧存储、Windows 评估版及部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
+评估版迁移进展：原生目录匹配、带备份的计时器重置、评估密钥安装、联网激活和结果验证后端已实现；尚未切换 GUI，dev.9 的评估版仍走兼容入口。
+
 ## 界面预览
 
 ![MAS Rust 激活页实际运行截图](screenshots/mas-rust-preview.png)

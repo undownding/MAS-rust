@@ -94,3 +94,13 @@ section = current.split('\n:tsksdata\n', 1)[1].split(') do (', 1)[0]
 rows = ['\t'.join(line.split('_', 2)) for line in section.splitlines() if re.match(r'^(15|16)_', line)]
 assert len(rows) > 80
 (DEST / 'tsforge-office-conversion.tsv').write_text('\n'.join(rows) + '\n')
+
+section = current.split('\n:ts_wineval\n', 1)[1].split('\nfor %%# in (\n', 1)[1].split(') do (', 1)[0]
+rows = []
+for line in section.splitlines():
+    if re.match(r'^[0-9a-f]{8}-', line):
+        fields = line.split()[0].replace('%f%', '').rstrip('_').split('_')
+        assert len(fields) in (4, 5)
+        rows.append('\t'.join(fields[:4] + ['1' if len(fields) == 5 and fields[4] == 'NoAct' else '0']))
+assert len(rows) == 29
+(DEST / 'tsforge-evaluation.tsv').write_text('\n'.join(rows) + '\n')

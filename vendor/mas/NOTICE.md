@@ -47,3 +47,5 @@ collected from a user's KMS service.
 `native/tsforge-office-host.tsv` and `native/tsforge-appx.tsv` preserve the fixed Office KMS Host and APPX sideloading product catalogs from the pinned `:ts_ohost:` and `:ts_appxlob:` sections, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
 
 `native/tsforge-office-conversion.tsv` preserves the pinned `:tsksdata:` Office product/conversion table, including free Retail products and aliases, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
+
+`native/tsforge-evaluation.tsv` contains the 29 evaluation activation ID/key/edition/version rows and NoAct markers from the pinned `:ts_wineval:` section, extracted by `tools/extract_native_data.py` (GPL-3.0-only). These are upstream public evaluation keys, not user-supplied credentials.
