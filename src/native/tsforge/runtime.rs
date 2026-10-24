@@ -50,12 +50,24 @@ fn configured_store() -> Result<Option<PathBuf>, String> {
     }
     Ok(None)
 }
+#[cfg(test)]
 pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
     super::storage_layout::modern_file(
         &platform::system_file("")?,
         configured_store()?.as_deref(),
         filename,
     )
+}
+
+pub(super) fn tokens_path(version: Version) -> Result<PathBuf, String> {
+    let system = platform::system_file("")?;
+    let windows = system.parent().ok_or("System32 路径缺少 Windows 父目录")?;
+    let configured = if version.paired() {
+        None
+    } else {
+        configured_store()?
+    };
+    storage_layout::tokens(version, windows, &system, configured.as_deref())
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
@@ -210,19 +222,24 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
         if paired != layout.version.paired() {
             return Err("备份类型与当前系统的主副文件布局不符。".into());
         }
-        let undo = if paired {
+        let extra = backup
+            .join("paired-extra-required")
+            .try_exists()
+            .map_err(|e| e.to_string())?;
+        if extra && !paired {
+            return Err("联合副本标记缺少双文件清单。".into());
+        }
+        let undo = if paired && !extra {
             report("正在恢复旧版主副文件及副本原始存在状态。");
             paired_store::restore(backup, path, &layout.paths[1], |bytes| {
                 reset::decode(bytes, layout.version).map(|_| ())
             })
-        } else if backup
-            .join("external-state-required")
-            .try_exists()
-            .map_err(|e| e.to_string())?
+        } else if extra
+            || backup
+                .join("external-state-required")
+                .try_exists()
+                .map_err(|e| e.to_string())?
         {
-            if layout.version != Version::Modern {
-                return Err("产品注册表联合备份仅支持现代存储。".into());
-            }
             let saved_registry = Backup::load(backup).map_err(|e| e.to_string())?;
             let specs =
                 registry_targets::select(&saved_registry.ids()).map_err(|e| e.to_string())?;
@@ -252,7 +269,7 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
                 })
                 .collect();
             let mut registry = saved_registry.capture(targets).map_err(|e| e.to_string())?;
-            let tokens = store_path("tokens.dat")?;
+            let tokens = tokens_path(layout.version)?;
             let cache_path = tokens
                 .parent()
                 .ok_or("令牌路径缺少父目录")?
@@ -260,19 +277,31 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
                 .join("cache.dat");
             crate::native::hook_files::plain_ancestors(&cache_path)?;
             cache = Some(cache_path);
-            report("正在校验并恢复 data.dat、tokens.dat 与已备份的产品注册表值。");
-            transaction::restore_participating(
-                backup,
-                &[path.clone(), tokens],
-                |index, bytes| {
-                    if index == 0 {
-                        reset::decode_modern(bytes).map(|_| ())
-                    } else {
-                        token::decode(bytes).map(|_| ())
-                    }
-                },
-                &mut registry,
-            )
+            report("正在校验并恢复物理存储、tokens.dat 与已备份的产品注册表值。");
+            let validate = |index, bytes: &[u8]| {
+                if index == 0 {
+                    reset::decode(bytes, layout.version).map(|_| ())
+                } else {
+                    token::decode(bytes).map(|_| ())
+                }
+            };
+            if paired {
+                paired_store::restore_participating(
+                    backup,
+                    path,
+                    &layout.paths[1],
+                    &[tokens],
+                    validate,
+                    &mut registry,
+                )
+            } else {
+                transaction::restore_participating(
+                    backup,
+                    &[path.clone(), tokens],
+                    validate,
+                    &mut registry,
+                )
+            }
         } else {
             transaction::restore_validated(backup, std::slice::from_ref(path), |_, bytes| {
                 reset::decode(bytes, layout.version).map(|_| ())

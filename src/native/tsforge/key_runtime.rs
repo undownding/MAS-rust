@@ -4,12 +4,13 @@ use super::{
     crypto::{self, Version},
     generated_key::{Generated, Prepared},
     key_install::{self, RegistryData, Request},
-    pid_context, pkey_config,
+    paired_store, pid_context, pkey_config,
     product_key::{Metadata, utf16},
     registry_backup::{Edit, RegistryValues},
     registry_targets::SPECS,
     reset, runtime, service, sl,
-    transaction::Transaction,
+    storage_layout::Physical,
+    transaction::{Failure, Participant, Transaction},
 };
 use crate::native::{
     platform,
@@ -99,11 +100,53 @@ impl RegistryPlan {
         )
     }
 }
+enum StoreTransaction {
+    Single(Transaction),
+    Paired(paired_store::Prepared),
+}
+impl StoreTransaction {
+    fn edit(
+        layout: &Physical,
+        tokens: &std::path::Path,
+        transform: impl FnOnce(&[&[u8]]) -> io::Result<Vec<Vec<u8>>>,
+    ) -> io::Result<Self> {
+        if layout.version.paired() {
+            paired_store::edit_files(
+                &layout.paths[0],
+                &layout.paths[1],
+                &[tokens.into()],
+                transform,
+            )
+            .map(Self::Paired)
+        } else {
+            Transaction::edit(vec![layout.paths[0].clone(), tokens.into()], transform)
+                .map(Self::Single)
+        }
+    }
+    fn backup_path(&self) -> &std::path::Path {
+        match self {
+            Self::Single(t) => t.backup_path(),
+            Self::Paired(t) => t.backup_path(),
+        }
+    }
+    fn checkpoint(self, extra: &mut dyn Participant) -> io::Result<PathBuf> {
+        match self {
+            Self::Single(t) => t.checkpoint(extra),
+            Self::Paired(t) => t.checkpoint(extra),
+        }
+    }
+    fn commit_participating(self, extra: &mut dyn Participant) -> Result<PathBuf, Failure> {
+        match self {
+            Self::Single(t) => t.commit_participating(extra),
+            Self::Paired(t) => t.commit_participating(extra),
+        }
+    }
+}
 fn transform(originals: &[&[u8]], request: &Request<'_>) -> io::Result<key_install::Plan> {
-    let (store, production) = reset::decode_modern(originals[0])?;
+    let (store, production) = reset::decode(originals[0], request.version)?;
     let mut plan = key_install::prepare(&store.encode()?, originals[1], request)?;
-    let encrypted = crypto::encrypt(&plan.physical, production, Version::Modern)?;
-    if crypto::decrypt(&encrypted, production, Version::Modern)? != plan.physical {
+    let encrypted = crypto::encrypt(&plan.physical, production, request.version)?;
+    if crypto::decrypt(&encrypted, production, request.version)? != plan.physical {
         return Err(io::Error::other("生成密钥存储加密回读不一致"));
     }
     plan.physical = encrypted;
@@ -139,8 +182,11 @@ pub fn install(prepared: &Prepared, report: &dyn Fn(&str)) -> Result<String, Str
     let Generated::Pkey2005(key) = prepared.key else {
         return Err("此路径仅接受 PKEY2005".into());
     };
-    let physical = runtime::preflight()?;
-    let tokens = runtime::store_path("tokens.dat")?;
+    let layout = runtime::storage_preflight()?;
+    if layout.version == Version::Vista {
+        return Err("Vista 不支持生成密钥安装。".into());
+    }
+    let tokens = runtime::tokens_path(layout.version)?;
     let cache = tokens
         .parent()
         .ok_or("令牌路径缺少父目录")?
@@ -197,7 +243,7 @@ pub fn install(prepared: &Prepared, report: &dyn Fn(&str)) -> Result<String, Str
         (app, base, family)
     };
     let request = Request {
-        version: Version::Modern,
+        version: layout.version,
         key,
         metadata: Metadata {
             mpc: &mpc,
@@ -216,12 +262,11 @@ pub fn install(prepared: &Prepared, report: &dyn Fn(&str)) -> Result<String, Str
         windows_family: windows_base.then_some(family.as_str()),
         pid_nonce: pkey_config::random_below(1000).map_err(|e| e.to_string())?,
     };
-    let paths = vec![physical, tokens];
     let mut registry_plan = None;
     let mut checkpoint = None;
-    service::stopped("sppsvc", || {
+    service::stopped(layout.service, || {
         let mut registry_data = None;
-        let transaction = Transaction::edit(paths.clone(), |originals| {
+        let transaction = StoreTransaction::edit(&layout, &tokens, |originals| {
             let plan = transform(originals, &request)?;
             registry_data = plan.registry;
             Ok(vec![plan.physical, plan.tokens])
@@ -263,8 +308,8 @@ pub fn install(prepared: &Prepared, report: &dyn Fn(&str)) -> Result<String, Str
             }
         }
         stage = "写入生成密钥存储和注册表";
-        service::stopped("sppsvc", || {
-            let transaction = Transaction::edit(paths.clone(), |originals| {
+        service::stopped(layout.service, || {
+            let transaction = StoreTransaction::edit(&layout, &tokens, |originals| {
                 let plan = transform(originals, &request)?;
                 Ok(vec![plan.physical, plan.tokens])
             })
@@ -320,7 +365,7 @@ mod tests {
     use super::*;
     #[test]
     fn encrypted_install_plan_preserves_envelope_key_and_rejects_bad_tokens() {
-        let request = Request {
+        let mut request = Request {
             version: Version::Modern,
             key: Key2005::new(206, 100_000_001, 0, false).unwrap(),
             metadata: Metadata {
@@ -339,28 +384,48 @@ mod tests {
             windows_family: Some("Professional"),
             pid_nonce: 123,
         };
-        let plain = include_bytes!("../../../tests/fixtures/tsforge/store-modern.bin");
         let tokens = include_bytes!("../../../tests/fixtures/tsforge/tokens-modern.bin");
-        for production in [true, false] {
-            let original = crypto::encrypt(plain, production, Version::Modern).unwrap();
-            let plan = transform(&[&original, tokens], &request).unwrap();
-            let (_, retained) = reset::decode_modern(&plan.physical).unwrap();
-            assert_eq!(retained, production);
-            assert_ne!(
-                crypto::decrypt(&plan.physical, production, Version::Modern).unwrap(),
-                plain
-            );
-            super::super::token::decode(&plan.tokens).unwrap();
-            assert!(plan.registry.is_some());
-            let mut corrupt = tokens.to_vec();
-            corrupt[40] ^= 1;
-            assert!(transform(&[&original, &corrupt], &request).is_err());
-            assert_eq!(
-                crypto::decrypt(&original, production, Version::Modern).unwrap(),
-                plain
-            );
+        for version in [
+            Version::Win7,
+            Version::Win8,
+            Version::WinBlue,
+            Version::Modern,
+        ] {
+            request.version = version;
+            let plain = if version.paired() {
+                super::super::physical::Store {
+                    header: [0; 8],
+                    format: version.format(),
+                    blocks: vec![],
+                    groups: vec![],
+                }
+                .encode()
+                .unwrap()
+            } else {
+                include_bytes!("../../../tests/fixtures/tsforge/store-modern.bin").to_vec()
+            };
+            for production in [true, false] {
+                let original = crypto::encrypt(&plain, production, version).unwrap();
+                let plan = transform(&[&original, tokens], &request).unwrap();
+                let (_, retained) = reset::decode(&plan.physical, version).unwrap();
+                assert_eq!(retained, production);
+                assert_ne!(
+                    crypto::decrypt(&plan.physical, production, version).unwrap(),
+                    plain
+                );
+                super::super::token::decode(&plan.tokens).unwrap();
+                assert!(plan.registry.is_some());
+                let mut corrupt = tokens.to_vec();
+                corrupt[40] ^= 1;
+                assert!(transform(&[&original, &corrupt], &request).is_err());
+                assert_eq!(
+                    crypto::decrypt(&original, production, version).unwrap(),
+                    plain
+                );
+            }
         }
     }
+
     #[test]
     fn setup_reader_handles_utf8_utf16_and_missing_files() {
         let dir = tempfile::tempdir().unwrap();

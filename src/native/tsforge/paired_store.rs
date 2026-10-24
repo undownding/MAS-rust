@@ -234,6 +234,11 @@ impl Prepared {
     pub fn commit(mut self) -> Result<PathBuf, Failure> {
         self.primary.commit_participating(&mut self.mirror)
     }
+    /// Save all originals without writing or creating the live mirror.
+    pub fn checkpoint(mut self, extra: &mut dyn Participant) -> io::Result<PathBuf> {
+        let mut participants = WithExtra(Participants::new(vec![&mut self.mirror, extra]));
+        self.primary.checkpoint(&mut participants)
+    }
     pub fn commit_participating(mut self, extra: &mut dyn Participant) -> Result<PathBuf, Failure> {
         let mut participants = WithExtra(Participants::new(vec![&mut self.mirror, extra]));
         self.primary.commit_participating(&mut participants)
@@ -524,6 +529,52 @@ mod tests {
             assert_eq!(fs::read(&primary).unwrap(), b"primary old");
             assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
         }
+    }
+    #[test]
+    fn joint_checkpoint_never_creates_mirror_and_restores_pre_operation_state() {
+        let (_dir, primary, mirror) = files(false);
+        let tokens = primary.with_file_name("tokens");
+        fs::write(&tokens, b"tokens old").unwrap();
+        let mut extra = Extra {
+            value: 1,
+            original: 1,
+            desired: 2,
+            fail_commit: true,
+            fail_rollback: true,
+        };
+        let checkpoint = edit_files(&primary, &mirror, std::slice::from_ref(&tokens), |_| {
+            Ok(vec![b"unused".to_vec(), b"unused".to_vec()])
+        })
+        .unwrap()
+        .checkpoint(&mut extra)
+        .unwrap();
+        assert_eq!(extra.value, 1);
+        assert!(!mirror.exists());
+        assert_eq!(fs::read(&primary).unwrap(), b"primary old");
+        assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
+        fs::write(&primary, b"after external operation").unwrap();
+        fs::write(&mirror, b"after external operation").unwrap();
+        fs::write(&tokens, b"changed tokens").unwrap();
+        let mut restored = Extra {
+            value: 2,
+            original: 2,
+            desired: 1,
+            fail_commit: false,
+            fail_rollback: false,
+        };
+        restore_participating(
+            &checkpoint,
+            &primary,
+            &mirror,
+            std::slice::from_ref(&tokens),
+            |_, _| Ok(()),
+            &mut restored,
+        )
+        .unwrap();
+        assert_eq!(restored.value, 1);
+        assert!(!mirror.exists());
+        assert_eq!(fs::read(&primary).unwrap(), b"primary old");
+        assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
     }
     #[test]
     fn joint_backup_cannot_be_restored_without_its_external_participant() {
