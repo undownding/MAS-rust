@@ -126,3 +126,8 @@ for label, method in [('ts_oldks', 'kms'), ('ts_winvista', 'phone')]:
         rows.append('\t'.join([method, generation, activation, key, channel, edition]))
 assert len(rows) == 66
 (DEST / 'tsforge-legacy-windows.tsv').write_text('\n'.join(rows) + '\n')
+
+section = current.split('if defined esuexistsup if defined _vis (', 1)[1].split('goto :ts_off', 1)[0]
+key = re.search(r'^set key=([A-Z0-9-]{29})$', section, re.M).group(1)
+server_esu = next(row.split('\t')[0] for row in (DEST / 'tsforge-esu.tsv').read_text().splitlines() if '\tServer-ESU-PA' in row)
+(DEST / 'tsforge-vista-esu.tsv').write_text(server_esu + '\t' + key + '\n')

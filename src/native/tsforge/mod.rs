@@ -79,6 +79,9 @@ mod connectivity;
 mod esu;
 #[cfg(windows)]
 mod esu_runtime;
+mod vista_esu;
+#[cfg(windows)]
+mod vista_esu_runtime;
 #[cfg(windows)]
 pub use esu_runtime::activate as activate_esu;
 mod host_licenses;

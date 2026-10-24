@@ -115,7 +115,7 @@ fn system_esu_tool(file: &str, args: &[&str], report: &dyn Fn(&str)) -> Result<(
     }
 }
 
-/// Vista keeps explicit compatibility before mutations; native errors never request fallback.
+/// Versioned ESU dispatch; native errors never request compatibility fallback.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
     activate_inner(option, false, report)
 }
@@ -137,11 +137,7 @@ fn activate_inner(
         return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
     }
     let context = Context::read(report)?;
-    if super::crypto::Version::detect(context.build).map_err(|e| e.to_string())?
-        == super::crypto::Version::Vista
-    {
-        return Ok(None);
-    }
+    let version = super::crypto::Version::detect(context.build).map_err(|e| e.to_string())?;
     let method = esu::method(option, context.build)?;
     let method = if combined {
         method
@@ -185,7 +181,12 @@ fn activate_inner(
             report,
             cleanup_build: None,
         };
-        match activation_flow::run(&mut backend, product.id, method) {
+        let result = if version == super::crypto::Version::Vista {
+            super::vista_esu_runtime::activate(product.id, report)
+        } else {
+            activation_flow::run(&mut backend, product.id, method)
+        };
+        match result {
             Ok(message) => {
                 report(&message);
                 Ok(())

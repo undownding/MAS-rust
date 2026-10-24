@@ -51,3 +51,5 @@ collected from a user's KMS service.
 `native/tsforge-evaluation.tsv` contains the 29 evaluation activation ID/key/edition/version rows and NoAct markers from the pinned `:ts_wineval:` section, extracted by `tools/extract_native_data.py` (GPL-3.0-only). These are upstream public evaluation keys, not user-supplied credentials.
 
 `native/tsforge-legacy-windows.tsv` contains the 66 fixed public generic-key rows from pinned `:ts_oldks:` and `:ts_winvista:`, preserving method, OS generation, channel, edition aliases and source order. Extraction is reproducible with `tools/extract_native_data.py` (GPL-3.0-only). These are upstream public keys, not user credentials; edition identifiers retain embedded underscores.
+
+`native/tsforge-vista-esu.tsv` 由固定版本 MAS 的 Vista ESU 分支提取，包含公开的 Server-ESU-PA 产品 ID 和固定密钥。上游将该密钥描述为 non-generic blocked MAK；它不是通用评估密钥，也不是从本机读取的用户凭据。提取脚本为 `tools/extract_native_data.py`。
