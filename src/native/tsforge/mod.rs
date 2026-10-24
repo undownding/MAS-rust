@@ -3,7 +3,9 @@
 mod binary;
 mod crypto;
 mod physical;
+mod service;
 #[cfg(windows)]
 mod sl;
 mod token;
+mod transaction;
 mod variable_bag;

@@ -141,3 +141,17 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 使用 RAII 关闭 SLC 上下文，并释放 API 返回的 LocalAlloc 内存；先核对分配长度再读取返回数组，字符串按分配边界查找结束符。保留调用名称与原始 HRESULT，只把 `SL_E_VALUE_NOT_FOUND` 识别为属性不存在；其他查询错误不再被误认为“支持电话激活”或无附加组件。使用 SDK 的 `SL_DATA_DWORD = 4`，不沿用上游手写枚举的连续编号。密钥批量卸载先完成枚举和筛选，执行阶段出错停止并保留错误；它不是整体事务，调用方仍须持有全局许可操作锁。
 
 依据 Microsoft 文档核对 [SKU 属性与 LocalFree](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetproductskuinformation)、[IID 返回内存](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgenerateofflineinstallationid) 和 [状态结构查询](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetlicensingstatusinformation)。新增 Windows 测试覆盖 SDK 数据类型、错误保留、内存边界/字符串终止和真实只读 SLC 状态查询，不执行密钥安装、CID 导入或状态刷新。当前模块仍仅参与测试构建；服务/存储协调、完整激活调用链和实机验收仍待迁移。非公开 `SLConsumeWindowsRight` 按固定上游 ABI 动态解析，缺少导出时显式报错；它不是稳定 SDK API，测试不会调用。`SLActivateProduct` 使用 SDK 的正确参数类型封装，尚未执行联机调用。
+
+### TSforge 存储备份、回滚与服务协调（进行中）
+
+2026-10-25：新增 `transaction.rs` 与 `service.rs`。文件修改前打开全部目标，Windows 使用独占句柄；在持有句柄时解析/转换原始内容，避免读取与写入之间的更新被覆盖。保留原文件并原位写入，以保留 ACL；拒绝重复路径、硬链接和检查到的重解析路径。当前最多处理 16 个文件，原始内容与替换内容总量限制为 256 MiB，超限明确报错。
+
+首次修改前，在首个存储文件的父目录创建独立备份目录，写入各文件原始/替换字节、SHA-256 清单和日志并刷新文件缓冲区。修改失败时逆序恢复已经触碰的文件，恢复后逐字节核对；回滚失败报告具体文件并保留备份。显式恢复要求调用方提供与清单一致的目标路径，校验全部备份后才开始恢复；恢复操作也先备份当前状态。仅准备或丢弃事务不会写入存储。
+
+这不是跨文件原子提交。断电或进程终止可能留下部分修改，持久备份与日志供后续显式恢复；GUI 的恢复入口和启动时发现未完成事务仍未接入。Windows 刷新每个备份/日志文件，尚未证明所有文件系统和断电场景下的持久性。目标路径应处于受保护的系统目录；路径预检并不构成针对管理员并发替换父目录的安全边界。
+
+服务协调保存初始运行状态，停止失败时不执行存储回调，并尝试恢复原本运行的服务；操作失败与恢复失败同时发生时保留两条错误。正常返回显式恢复，展开栈时提供 best-effort 恢复。原本停止的服务保持停止；后续激活流程仍需显式刷新许可状态。测试使用模拟服务，不改变开发机或 CI 的真实 SPP 服务状态。
+
+本轮文件测试覆盖成功写入/恢复、部分写入失败、多文件回滚、回滚失败后的显式恢复、损坏备份、目标不匹配、硬链接、重复/缺失路径、仅准备时不写入、转换验证失败；Windows 另验证独占句柄阻止并发写入。所有新增模块仍在测试构建中，未将 TSforge GUI 路由标为原生。
+
+上一轮 SL API 的 Windows CI [40111353095](https://github.com/undownding/MAS-rust/actions/runs/40111353095) 已通过测试和 Clippy，包括真实只读 SLC 状态查询；检查时 release 构建仍在执行。
