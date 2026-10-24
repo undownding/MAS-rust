@@ -244,7 +244,7 @@ pub fn enable_resiliency(report: &dyn Fn(&str)) -> Result<(), String> {
         hive.finish()
     };
     for profile in profiles()? {
-        record(&mut errors, user_hive(&profile).and_then(&set));
+        record(&mut errors, user_hive(&profile).and_then(set));
     }
     if let Some(list) = Key::open(PROFILES, KEY_WOW64_64KEY, false)?
         && let Some(default) = list.string("Default")?
