@@ -7,6 +7,7 @@ mod reset;
 mod service;
 #[cfg(windows)]
 mod sl;
+mod storage_layout;
 #[cfg_attr(not(test), allow(dead_code))]
 mod token;
 mod transaction;

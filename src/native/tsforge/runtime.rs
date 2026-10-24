@@ -34,7 +34,7 @@ fn expand(value: &str) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
+fn configured_store() -> Result<Option<PathBuf>, String> {
     if let Some(key) = Key::open(
         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SoftwareProtectionPlatform",
         KEY_WOW64_64KEY,
@@ -42,23 +42,16 @@ pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
     )? && let Some(value) = key.string("TokenStore")?
         && !value.is_empty()
     {
-        let path = expand(&value)?.join(filename);
-        if path.is_file() {
-            return Ok(path);
-        }
+        return expand(&value).map(Some);
     }
-    for relative in [
-        r"spp\store",
-        r"spp\store\2.0",
-        r"spp\store_test",
-        r"spp\store_test\2.0",
-    ] {
-        let path = platform::system_file(relative)?.join(filename);
-        if path.is_file() {
-            return Ok(path);
-        }
-    }
-    Err(format!("未找到 Windows 许可存储 {filename}"))
+    Ok(None)
+}
+pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
+    super::storage_layout::modern_file(
+        &platform::system_file("")?,
+        configured_store()?.as_deref(),
+        filename,
+    )
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
