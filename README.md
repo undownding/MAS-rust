@@ -14,7 +14,7 @@
 **v0.5.0-dev：Ohook 安装与卸载均使用 Rust，内嵌 x86/x64 DLL 从固定 Rust 源码构建。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+TSforge 的存储格式与加密层已开始迁移为 Rust，并加入独立样本测试；尚未接入实际存储写入。TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 

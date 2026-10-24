@@ -19,3 +19,10 @@ The Rust integration writes these bytes to an exclusive temporary directory and 
 `native/hwid.tsv`, `native/kms38.tsv`, their fallback tables, `native/ohook.tsv`, `native/office-msi.tsv`, `native/online-kms.tsv`, `native/online-kms-fallback.tsv`, `native/kms-servers.txt`, and `native/ticket-key.blob` are extracted from the above pinned files by `tools/extract_native_data.py`. The blob is the upstream public signing data, not a user credential. The original scripts remain unchanged. Rust implementations derived from those algorithms retain this project's GPL-3.0-only licensing. Independent reference tickets in `tests/fixtures` validate the Rust encoding and signature output.
 
 Since v0.2.0 compatibility scripts are staged under LOCALAPPDATA/MAS-Rust/engine-runs, not the user's Temp subtree, because upstream rejects nested Temp paths. Noninteractive runs stream a log into the GUI. HWID/KMS38 primary activation routes no longer execute those scripts.
+
+`native/tsforge-production.blob` and `native/tsforge-test.blob` are extracted
+verbatim from the public `LibTSforge.Crypto.Keys` constants in the pinned
+`MAS_AIO.cmd`. They are not credentials obtained from a local machine.
+`tools/extract_native_data.py` reproduces the extraction. The Rust TSforge
+storage codecs and crypto envelope are derived from the corresponding
+LibTSforge classes in that same GPL-3.0 source.

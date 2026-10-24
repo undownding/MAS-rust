@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 
 pub const KMS38_SESSION: &str = "OSMajorVersion=5;OSMinorVersion=1;OSPlatformId=2;PP=0;GVLKExp=2038-01-19T03:14:07Z;DownlevelGenuineState=1;";
 
-fn signing_key(blob: &[u8]) -> Result<RsaPrivateKey, String> {
+pub(super) fn signing_key(blob: &[u8]) -> Result<RsaPrivateKey, String> {
     if blob.len() != 596
         || blob[..20]
             != [

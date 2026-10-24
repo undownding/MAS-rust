@@ -117,3 +117,15 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 - DLL 不做随机时间戳/哈希修改，便于核对构建产物。当前仍非完整纯 Rust MAS，TSforge 和高级菜单仍须继续迁移。
 
 2026-10-25：Windows CI 运行 40109316569 已通过包括 x86/x64 隔离 DLL 加载在内的测试；后续 Clippy 因 Rust 1.99 新检查指出冗余闭包借用而失败，已修正。该结果证明模拟提供程序下的 DLL 行为，不等同于 Office 安装实测。
+
+### TSforge 底层迁移（进行中）
+
+2026-10-25：`src/native/tsforge` 新增 Vista/现代 VariableBag、Vista/Windows 7/现代物理存储的编解码，以及物理存储加密封装。依据仓库固定 MAS 源码中的同名 C# 类移植，没有使用候选 Rust 项目内嵌的 .NET 程序。
+
+- 使用上游 CRC-32/BZIP2 算法。保留未知类型、标记、原始键字节、重复键顺序、现代存储分组及头部；读长度时先检查边界再分配内存。拒绝截断记录、异常计数和非零对齐填充，避免重写时静默丢弃未识别数据。当前仅接受已实现的规范格式，需要真实样本补充兼容性验证。
+- 加密封装实现 RSA PKCS#1 v1.5/SHA-1、AES-CBC/PKCS7（读取 128/192/256 位密钥）、Vista 盐化 SHA-1 和后续版本 HMAC-SHA1。生产/测试 RSA blob 来自固定上游公开常量；复用已验证的 CSP blob 解析器。新封装使用系统随机源，私钥解密使用 RSA blinding。
+- 封装解析检查版本、`UNTRUSTSTORE` 标记、RSA 签名及完整性校验；当前拒绝未知头部或非零保留字段。未知格式必须显式扩展后才可写入，不自动猜测。
+- `tools/tsforge_codec_vectors.py` 用独立多项式除法生成格式向量；`tools/tsforge_crypto_vectors.py` 用 Python cryptography/OpenSSL 生成确定性的加密样本，覆盖两套公开密钥、三种 AES 长度及两种完整性算法。样本完全合成，不包含机器许可数据。固定 RSA 填充仅用于测试向量。
+- **模块目前仅在测试构建中启用，加密依赖暂列 dev-dependencies；GUI 的 TSforge 路由仍为兼容模式。** 还需 TokenStore、SL API、产品密钥配置、备份/恢复和写入事务，之后逐项接入 SCID/ZCID/KMS4k。未宣称 TSforge 激活已原生化。
+
+上一轮 Ohook 修复的 Windows CI [40109703595](https://github.com/undownding/MAS-rust/actions/runs/40109703595) 已全部通过。

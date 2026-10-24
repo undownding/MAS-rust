@@ -49,3 +49,10 @@ rows = ['\t'.join(line.split('_')) for line in section.splitlines() if re.match(
 section = current.split('\n:ohookdata\n', 1)[1].split(') do (', 1)[0]
 rows = ['\t'.join(re.split('_+', line.replace('%f%', ''))) for line in section.splitlines() if re.match(r'^(14|15|16)_[0-9a-f]{8}-', line)]
 (DEST / 'ohook.tsv').write_text('\n'.join(rows) + '\n')
+
+# These RSA blobs are public upstream constants, not local machine credentials.
+for name in ('PRODUCTION', 'TEST'):
+    section = current.split('public static readonly byte[] ' + name + ' = {', 1)[1].split('};', 1)[0]
+    blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
+    assert len(blob) == 596
+    (DEST / ('tsforge-' + name.lower() + '.blob')).write_bytes(blob)
