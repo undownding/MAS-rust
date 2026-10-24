@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows 单项含旧版评估分支、ESU（含 Vista 专用分支）、Win8/8.1 APPX 已接入 Rust；Office Host 含 Win7/Win8；Office 客户端与组合含 Win8；Windows Host 含旧版；Vista、Win7 组合仍兼容。GUI 最低系统要求不变，原生激活待实机验收。"); }
+                if category == "TSforge" { ui.label("Windows、ESU、Office、Host、APPX、组合与重置入口均使用 Rust，包含相应旧版存储后端；Office 客户端仍要求 Win8+。GUI 最低系统要求不变，原生激活待实机验收。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -140,7 +140,7 @@ impl MasApp {
                 }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
-                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"] | ["/Z-WinHost"] | ["/Z-OffHost"] | ["/Z-APPX"] | ["/Z-Office"] | ["/Z-ProjectVisio"] | ["/Z-WindowsESUOffice"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
+                        if ui.button(format!("{} · {}", op.title, if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
                     }
                 });
             });

@@ -16,15 +16,35 @@ impl Scope {
         }
     }
 }
+pub fn method(option: usize, build: u32) -> Result<Method, String> {
+    super::crypto::Version::detect(build).map_err(|e| e.to_string())?;
+    let method = match option {
+        0 if build >= 26100 => Method::StaticCid,
+        0 | 2 => Method::ZeroCid,
+        1 => Method::StaticCid,
+        3 => Method::Kms4k,
+        _ => return Err("未知 TSforge 方法".into()),
+    };
+    if method == Method::StaticCid && build < 9200 {
+        return Err("StaticCID 需要 Windows 8 或更高版本，未执行组合修改。".into());
+    }
+    Ok(method)
+}
 pub fn run(
-    method: Method,
+    build: u32,
+    selected: Method,
     cleanup: impl FnOnce() -> Result<(), String>,
     mut activate: impl FnMut(Scope, Method) -> Result<Option<String>, String>,
 ) -> Result<String, String> {
+    let method = method(selected.option(), build)?;
     cleanup().map_err(|e| format!("组合流程共享准备失败，未继续激活：{e}"))?;
     let mut messages = Vec::new();
     let mut failed = false;
     for scope in [Scope::Windows, Scope::Esu, Scope::Office] {
+        if scope == Scope::Office && build < 9200 {
+            messages.push("Office：跳过，TSforge Office 仅支持 Windows 8 及更高版本。".into());
+            continue;
+        }
         if scope == Scope::Esu && method == Method::Kms4k {
             messages.push("ESU：跳过，KMS4k 不支持 ESU；可联网后选择 Auto 或 StaticCID".into());
             continue;
@@ -67,18 +87,13 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
         return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
     }
     let context = windows_context::Context::read(report)?;
-    // Decide whole-request compatibility before ANY component can mutate state.
-    if context.build < 9200 {
-        return Ok(None);
-    }
     runtime::storage_preflight()?;
-    let method = connectivity::resolve(
-        office_client::method(option, context.build)?,
-        option == 0,
-        || connectivity::connected(report),
-    )?;
+    let method = connectivity::resolve(method(option, context.build)?, option == 0, || {
+        connectivity::connected(report)
+    })?;
     report(&format!("原生 Windows + ESU + Office：共享方法 {method:?}"));
     let result = run(
+        context.build,
         method,
         || {
             if method == Method::Kms4k {
@@ -101,10 +116,63 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
 mod tests {
     use super::*;
     #[test]
+    fn legacy_combination_skips_unsupported_scopes_without_calling_them() {
+        for build in [6000, 6002, 7600, 7601] {
+            assert_eq!(method(0, build).unwrap(), Method::ZeroCid);
+            for selected in [Method::ZeroCid, Method::Kms4k] {
+                let mut calls = vec![];
+                let mut cleaned = 0;
+                let message = run(
+                    build,
+                    selected,
+                    || {
+                        cleaned += 1;
+                        Ok(())
+                    },
+                    |scope, method| {
+                        assert_eq!(method, selected);
+                        calls.push(scope);
+                        Ok(Some("verified".into()))
+                    },
+                )
+                .unwrap();
+                assert_eq!(cleaned, 1);
+                assert_eq!(
+                    calls,
+                    if selected == Method::Kms4k {
+                        vec![Scope::Windows]
+                    } else {
+                        vec![Scope::Windows, Scope::Esu]
+                    }
+                );
+                assert!(message.contains("Office：跳过"));
+            }
+            assert!(
+                run(
+                    build,
+                    Method::StaticCid,
+                    || panic!("must not clean"),
+                    |_, _| panic!("must not activate")
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            run(
+                7603,
+                Method::ZeroCid,
+                || panic!("unknown build"),
+                |_, _| panic!()
+            )
+            .is_err()
+        );
+    }
+    #[test]
     fn same_resolved_method_reaches_each_scope_and_kms_skips_esu() {
         for method in [Method::StaticCid, Method::ZeroCid, Method::Kms4k] {
             let mut calls = Vec::new();
             let result = run(
+                26100,
                 method,
                 || Ok(()),
                 |scope, selected| {
@@ -129,6 +197,7 @@ mod tests {
     fn failures_and_unexpected_fallback_do_not_repeat_or_stop_other_scopes() {
         let mut calls = Vec::new();
         let error = run(
+            26100,
             Method::StaticCid,
             || Ok(()),
             |scope, _| {
@@ -149,6 +218,7 @@ mod tests {
         );
         assert!(
             run(
+                26100,
                 Method::Kms4k,
                 || Err("cleanup failed".into()),
                 |_, _| panic!("must not activate")
@@ -158,20 +228,11 @@ mod tests {
         );
     }
     #[test]
-    fn method_option_roundtrips_and_combined_auto_uses_office_policy() {
+    fn method_option_roundtrips_and_combined_auto_policy() {
         for method in [Method::StaticCid, Method::ZeroCid, Method::Kms4k] {
-            assert_eq!(
-                super::super::office_client::method(method.option(), 26100).unwrap(),
-                method
-            );
+            assert_eq!(self::method(method.option(), 26100).unwrap(), method);
         }
-        assert_eq!(
-            super::super::office_client::method(0, 26100).unwrap(),
-            Method::StaticCid
-        );
-        assert_eq!(
-            super::super::office_client::method(0, 26099).unwrap(),
-            Method::ZeroCid
-        );
+        assert_eq!(self::method(0, 26100).unwrap(), Method::StaticCid);
+        assert_eq!(self::method(0, 26099).unwrap(), Method::ZeroCid);
     }
 }

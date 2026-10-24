@@ -192,13 +192,13 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
     if op.args == ["/Z-WindowsESUOffice"] {
         return match crate::native::tsforge::activate_combined(options.ts_method, report)? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if op.args == ["/Z-Windows"] {
         return match crate::native::tsforge::activate_windows(options.ts_method, report)? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if matches!(op.args, ["/Z-Office"] | ["/Z-ProjectVisio"]) {
@@ -208,19 +208,19 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
             report,
         )? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if op.args == ["/Z-ESU"] {
         return match crate::native::tsforge::activate_esu(options.ts_method, report)? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if op.args == ["/Z-WinHost"] {
         return match crate::native::tsforge::activate_windows_host(options.ts_method, report)? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if matches!(op.args, ["/Z-OffHost"] | ["/Z-APPX"]) {
@@ -232,7 +232,7 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
         };
         return match activate_auxiliary(scope, options.ts_method, report)? {
             Some(result) => Ok(result),
-            None => run_compatibility(op, options, report),
+            None => Err("原生 TSforge 未返回处理结果；未调用兼容脚本。".into()),
         };
     }
     if op.args == ["/Z-Reset"] {
