@@ -195,6 +195,16 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
             None => run_compatibility(op, options, report),
         };
     }
+    if matches!(op.args, ["/Z-Office"] | ["/Z-ProjectVisio"]) {
+        return match crate::native::tsforge::activate_office(
+            op.args == ["/Z-ProjectVisio"],
+            options.ts_method,
+            report,
+        )? {
+            Some(result) => Ok(result),
+            None => run_compatibility(op, options, report),
+        };
+    }
     if op.args == ["/Z-ESU"] {
         return match crate::native::tsforge::activate_esu(options.ts_method, report)? {
             Some(result) => Ok(result),
@@ -265,6 +275,8 @@ pub fn is_native(op: Operation) -> bool {
             | ["/Z-WinHost"]
             | ["/Z-OffHost"]
             | ["/Z-APPX"]
+            | ["/Z-Office"]
+            | ["/Z-ProjectVisio"]
     ) || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
 }
 
@@ -405,6 +417,8 @@ mod tests {
                         | ["/Z-WinHost"]
                         | ["/Z-OffHost"]
                         | ["/Z-APPX"]
+                        | ["/Z-Office"]
+                        | ["/Z-ProjectVisio"]
                         | ["/Ohook"]
                         | ["/Ohook-Uninstall"]
                         | ["/KMS38"]

@@ -93,6 +93,8 @@ pub use auxiliary::Scope as AuxiliaryScope;
 pub use auxiliary_runtime::activate as activate_auxiliary;
 mod license_reinstall;
 mod office_client;
+#[cfg(windows)]
+pub use office_client::activate as activate_office;
 mod office_finalization;
 mod office_preparation;
 #[cfg(windows)]

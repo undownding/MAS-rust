@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU/KMS Host/APPX 的现代存储入口及重置已接入 Rust；其他范围仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/Office/Project/Visio/ESU/KMS Host/APPX 的现代存储入口及重置已接入 Rust；其他范围仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的 Office 客户端/Project/Visio/组合、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的组合、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -449,3 +449,10 @@ C2R 在许可准备前直接查询 SCM：Office 16 要求 ClickToRunSvc，Office
 新增 `office_client.rs`，串起 Auto 方法/联网判定、现代存储预检、C2R/MSI/UWP 准备、KMS 配置清理、Office 最终清理、生成密钥和 SCID/ZeroCID/KMS4k 执行链，最后触发 SPP 重评估。无目标不清理；清理失败不继续安装密钥；产品激活失败继续其他产品并保留准备错误，最终只在全部成功时报告成功。旧存储仍明确返回兼容准备结果，原生失败不回退脚本。
 
 147 项本地测试与双目标 Clippy 通过。新增固定目录递归/损坏 XML、导入失败数量、Project/Visio 保留规则、Office Auto 边界和清理失败停止测试；Windows 专用测试仅查询服务和操作临时 HKCU 横幅配置，不清理真实 Office、不重新导入许可或执行激活。许可准备 CI 40122613303、UWP CI 40122867640 仍在运行。GUI 尚未切换，实际激活未验收；截图及 dev.7 测试包没有变化。
+
+
+### Office / Project / Visio GUI 接入（v0.6.0-dev.8）
+
+两个单项按钮已接入 Office 原生编排：build 9600+ 使用 Rust，旧存储明确转兼容；原生错误不重跑脚本。界面范围标签、关于页及确认说明同步更新，说明产品转换、用户缓存、冲突密钥和部分修改不自动撤销。组合入口仍兼容，不将单项迁移等同于整个 TSforge 完成。
+
+147 项本地测试与双目标 Clippy 通过，入口分派测试新增两个单项范围。更新 README、实际 Linux 预览截图，并构建 Windows dev.8 本地测试包。Office 许可准备 CI 40122613303 已成功；UWP CI 40122867640 的实际包查询测试及 Clippy 已通过，发布构建尚在运行；清理/编排 CI 40123221959 仍在运行。真实 Office 激活和清理仍需实机验收。

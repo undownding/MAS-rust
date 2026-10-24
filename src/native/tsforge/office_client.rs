@@ -45,7 +45,6 @@ pub fn batch(
     }
 }
 #[cfg(windows)]
-#[allow(dead_code)]
 pub fn activate(
     project_visio_only: bool,
     option: usize,
