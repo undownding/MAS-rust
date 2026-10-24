@@ -65,3 +65,6 @@ mod wmi_service;
 
 #[cfg(any(windows, test))]
 mod wmi_rebuild;
+
+#[cfg(any(windows, test))]
+mod token_backup;
