@@ -1,12 +1,13 @@
 [package]
 name = "mas-rust"
-version = "0.6.0-dev.20"
+version = "0.6.0-dev.21"
 edition = "2024"
 description = "Rust desktop interface for Microsoft Activation Scripts"
 license = "GPL-3.0-only"
 build = "build.rs"
 
 [dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "system_fonts", "x11", "wayland"] }
 image = { version = "0.25.8", default-features = false, features = ["png"] }
 thiserror = "2.0.17"

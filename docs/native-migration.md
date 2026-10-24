@@ -713,3 +713,11 @@ README、界面截图和本地包更新至 dev.19。未实际运行 Office 修�
 通过 Windows Known Folder 获取桌面，在 AT_Logs 中创建独立目录，保存命令原始输出、修复前后 CBS/DISM 文件及结果摘要。输出按原始字节保存，保留 SFC 可能使用的 UTF-16；单日志上限 512 MiB，目标使用 create_new，日志缺失或复制失败逐项报告。保留系统现有日志，不执行上游为日志轮转而停止 TrustedInstaller/删除日志的步骤；当前导出原始日志，尚未迁移 CAB 压缩。退出 0 只说明程序退出，DISM 3010 明确提示重启需求，其他退出码保留十进制与十六进制。
 
 204 项 Linux 测试及双目标 Clippy 通过。测试覆盖命令参数/版本边界/退出状态、原始字节保留、目标禁止覆盖及缺失日志，不执行真实 DISM/SFC。README、截图和本地包更新至 dev.20。dev.16 Windows CI 40129069941 已成功，dev.17/18/19 CI 40129261202/40129460472/40129700105 仍在运行。真实系统修复效果尚未验收，其他修复与高级工具仍需继续迁移。
+
+### 修复日志的 Rust CAB 导出（v0.6.0-dev.21）
+
+新增流式单文件 CAB 写入器，依据 Microsoft [MS-CAB 规范](https://download.microsoft.com/download/4/D/A/4DA14F27-B4EF-4170-A6E6-5B1EF85B1BAA/%5BMS-CAB%5D.pdf) 输出标准 MSZIP 压缩副本。32 KiB 原始 DEFLATE 块加 CK 标记，固定文件/文件夹表，不使用多卷或可选校验和；采用 MSZIP 而非上游 makecab 的 LZX，不调用 makecab/CMD/PowerShell。flate2 使用 Rust 后端。限制为单个 512 MiB 文件，文件名仅允许简单 ASCII，先写同目录临时文件并同步，完成后以禁止覆盖的方式发布 CAB。
+
+DISM/SFC 的 before/after 日志快照成功后立即生成相邻 CAB；保留原始日志，压缩失败报告具体原因。测试验证空文件、1 字节、32 KiB 整块/跨块、多块内容、禁止覆盖和路径名称拒绝。205 项 Linux 测试及双目标 Clippy 通过；独立 libarchive 对五个生成样本解压并逐字节匹配，复验脚本为 tools/verify_cabinet.py。Windows 测试使用系统 expand.exe 解压同样样本，不执行系统修复。
+
+dev.17/18 Windows CI 40129261202/40129460472 已成功，dev.19/20 CI 40129700105/40129933060 仍在运行。README 与本地包更新至 dev.21，界面未变，保留现有实际截图。没有执行真实系统修复；其他修复与高级功能仍在迁移。

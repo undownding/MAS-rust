@@ -50,3 +50,6 @@ pub mod tsforge;
 pub mod office_repair;
 
 pub mod system_repair;
+
+#[cfg(any(windows, test))]
+mod cabinet;

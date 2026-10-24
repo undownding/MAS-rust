@@ -88,7 +88,16 @@ pub fn capture(kind: Kind, log_root: &Path, directory: &Path, phase: &str) -> Ve
         let name = relative.replace('/', "_");
         let destination = directory.join(format!("{phase}_{name}"));
         match snapshot(&log_root.join(relative), &destination) {
-            Ok(true) => {}
+            Ok(true) => {
+                #[cfg(any(windows, test))]
+                if let Err(e) = super::cabinet::compress(
+                    &destination,
+                    &destination.with_extension("cab"),
+                    &format!("{phase}_{name}"),
+                ) {
+                    errors.push(format!("压缩 {relative}：{e}；原始日志保留"));
+                }
+            }
             Ok(false) => errors.push(format!("{relative} 尚不存在")),
             Err(e) => errors.push(format!("复制 {relative}：{e}")),
         }
