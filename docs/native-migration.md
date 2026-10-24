@@ -427,3 +427,14 @@ Office GUI 尚未切换；C2R/MSI/UWP 产品发现、许可导入和配置清理
 141 项本地测试与 Linux/Windows 双目标 Clippy 通过。新增 Mondo 去重、MSI 缺失许可、2024 Preview 文件、动态产品 UTF-16、损坏/DTD/数量限制和导入失败阶段测试；Windows 专用测试只读实际 Office 安装与许可 ID，不执行配置、导入或激活。前两轮 Office Host/APPX CI 40121694619、产品选择 CI 40121947342 均已成功，本轮 Windows CI 待推送验证。
 
 Office GUI 尚未切换：UWP 发现、ClickToRun 服务检查、KMS 横幅配置、最终密钥/订阅缓存清理及激活调度仍需连接，未宣称完整客户端流程或实机验收完成。界面和 dev.7 测试包未改变，未重新生成相同截图。
+
+
+### Office UWP 原生安装发现（进行中）
+
+新增 `office_uwp.rs`，使用 WinRT PackageManager 枚举当前用户的 Microsoft.Office.Desktop，读取 InstalledLocation 与依赖包完整名称，按 Integration/Integrator.exe 判断桌面载荷，不启动 PowerShell。普通 Office 应用归并为 O365HomePremRetail；Project/Visio 分别根据本机许可文件按 2024 → 2021 → 2019 → 无年份选择产品，保持上游依赖匹配语义。
+
+Office 准备适配器新增 UWP 分支，使用包目录中的 Office16/pkeyconfig-office.xrm-ms 和 Licenses16，连接现有转换、许可导入及 ID 验证；没有 C2R 配置注册表的 UWP 不写 OSPPReady。顺序为 UWP → C2R → MSI，build 10240 以下不调用包 API。
+
+WinRT 使用空 SID 查询当前用户，逐项检查迭代 HRESULT；每次成功初始化（包括 S_FALSE）均匹配清理，并保留 WMI 已有的线程模型。接口语义参考 [FindPackagesForUser](https://learn.microsoft.com/en-us/uwp/api/windows.management.deployment.packagemanager.findpackagesforuser) 和 [RoInitialize](https://learn.microsoft.com/windows/win32/api/roapi/nf-roapi-roinitialize)。增加 Windows SDK crate 的 ApplicationModel、Management_Deployment、Storage_Search 与 WinRT 特性，无新增 crate 版本。
+
+143 项本地测试和双目标 Clippy 通过；新增依赖归并、大小写、独立 Project/Visio 版本优先级、无依赖/预览文件回退测试。Windows 专用测试只枚举实际包，并在 WinRT 清理后检查已有 WMI 连接仍可查询；实际包 API 执行待本次 Windows CI。上一轮 Office 准备 CI 40122613303 仍在运行。Office GUI、截图和 dev.7 测试包入口未改变；服务检查、最终清理、激活调度仍在迁移。

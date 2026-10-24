@@ -95,4 +95,5 @@ mod office_preparation;
 #[cfg(windows)]
 mod office_runtime;
 mod office_selection;
+mod office_uwp;
 mod windows_edition;

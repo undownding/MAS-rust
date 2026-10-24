@@ -1,10 +1,10 @@
-//! C2R/MSI adapters for Office client license preparation. The GUI still uses
-//! compatibility activation until UWP discovery and final cleanup are connected.
+//! C2R/MSI/UWP adapters for Office client license preparation. The GUI still uses
+//! compatibility activation until final cleanup and activation are connected.
 #![allow(dead_code)]
 use super::{
     activation_flow::Method,
     office_preparation::{self, Backend},
-    pkey_config,
+    office_uwp, pkey_config,
 };
 use crate::native::{
     licensing::{Licensing, string},
@@ -23,30 +23,35 @@ use wmi::Variant;
 const APP: &str = "0ff1ce15-a989-479d-af46-f275c6370663";
 
 enum Installed {
+    Uwp(office_uwp::Installation),
     C2r(office::Installation),
     Msi(office::MsiInstallation),
 }
 impl Installed {
     fn products(&self) -> &[String] {
         match self {
+            Self::Uwp(i) => &i.products,
             Self::C2r(i) => &i.products,
             Self::Msi(i) => &i.products,
         }
     }
     fn version(&self) -> u32 {
         match self {
+            Self::Uwp(_) => 16,
             Self::C2r(i) => i.version,
             Self::Msi(i) => i.version,
         }
     }
     fn licenses(&self) -> Option<&Path> {
         match self {
+            Self::Uwp(i) => Some(&i.licenses),
             Self::C2r(i) => Some(&i.licenses),
             Self::Msi(_) => None,
         }
     }
     fn config_path(&self) -> Result<PathBuf, String> {
         match self {
+            Self::Uwp(i) => Ok(i.root.join("Office16").join("pkeyconfig-office.xrm-ms")),
             Self::C2r(i) => Ok(i
                 .licenses
                 .parent()
@@ -80,7 +85,7 @@ impl Installed {
         }
     }
 }
-fn discover() -> Result<Vec<Installed>, String> {
+fn discover(build: u32) -> Result<Vec<Installed>, String> {
     let mut installed = office::discover()?
         .into_iter()
         .map(Installed::C2r)
@@ -91,7 +96,17 @@ fn discover() -> Result<Vec<Installed>, String> {
             .filter(|i| i.version >= 15)
             .map(Installed::Msi),
     );
-    installed.sort_by_key(|i| (matches!(i, Installed::Msi(_)), i.version()));
+    installed.extend(office_uwp::discover(build)?.into_iter().map(Installed::Uwp));
+    installed.sort_by_key(|i| {
+        (
+            match i {
+                Installed::Uwp(_) => 0,
+                Installed::C2r(_) => 1,
+                Installed::Msi(_) => 2,
+            },
+            i.version(),
+        )
+    });
     Ok(installed)
 }
 fn installed_ids(licensing: &Licensing) -> Result<HashSet<Uuid>, String> {
@@ -154,19 +169,21 @@ pub struct Prepared {
     pub errors: Vec<String>,
     pub has_msi: bool,
     pub has_c2r: bool,
+    pub has_uwp: bool,
     pub keep_shared: bool,
 }
 /// Pre-read all plans, then import independently. Consumers must retain errors
 /// and must not report a partially prepared set as a completely successful run.
 pub fn prepare(
+    build: u32,
     method: Method,
     project_visio_only: bool,
     report: &dyn Fn(&str),
 ) -> Result<Prepared, String> {
     let licensing = Licensing::new()?;
-    let installed = discover()?;
+    let installed = discover(build)?;
     if installed.is_empty() {
-        return Err("未发现受支持的 Office C2R/MSI 安装".into());
+        return Err("未发现受支持的 Office C2R/MSI/UWP 安装".into());
     }
     let ids = installed_ids(&licensing)?;
     let mut result = Prepared {
@@ -174,6 +191,7 @@ pub fn prepare(
         errors: vec![],
         has_msi: installed.iter().any(|i| matches!(i, Installed::Msi(_))),
         has_c2r: installed.iter().any(|i| matches!(i, Installed::C2r(_))),
+        has_uwp: installed.iter().any(|i| matches!(i, Installed::Uwp(_))),
         keep_shared: false,
     };
     let mut plans = Vec::new();
@@ -313,7 +331,7 @@ mod tests {
         let licensing = Licensing::new().unwrap();
         let ids = installed_ids(&licensing).unwrap();
         assert!(ids.iter().all(|id| !id.is_nil()));
-        for i in discover().unwrap() {
+        for i in discover(10240).unwrap() {
             assert!([15, 16].contains(&i.version()));
             assert!(!i.products().is_empty());
             if let Ok(path) = i.config_path() {
