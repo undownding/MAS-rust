@@ -56,9 +56,130 @@ pub fn select(
             && installed.contains(&product.id)
     })
 }
+pub struct Installed {
+    pub id: Uuid,
+    pub suffix: String,
+    pub channel: String,
+}
+pub trait Backend {
+    fn install(&mut self, key: &str) -> Result<(), String>;
+    fn refresh(&mut self) -> Result<(), String>;
+    fn installed(&mut self, id: Uuid) -> Result<Installed, String>;
+}
+/// Success proves key mapping only; activation is a separate operation.
+pub fn install(product: &Product, backend: &mut impl Backend) -> Result<(), String> {
+    if !catalog().iter().any(|p| {
+        p.id == product.id
+            && p.version == product.version
+            && p.method == product.method
+            && p.key == product.key
+            && p.channel == product.channel
+            && p.edition == product.edition
+    }) {
+        return Err("所选密钥不在固定旧版目录中，未执行安装。".into());
+    }
+    backend.install(product.key).map_err(|e| {
+        format!("旧版通用密钥安装调用失败：{e}；系统调用可能已改变密钥，不自动回滚或重试。")
+    })?;
+    let mut verify = || -> Result<(), String> {
+        backend.refresh()?;
+        let installed = backend.installed(product.id)?;
+        if installed.id != product.id
+            || !installed.suffix.eq_ignore_ascii_case(&product.key[24..])
+            || !installed.channel.eq_ignore_ascii_case(product.channel)
+        {
+            return Err("安装后的许可证 ID、密钥末五位或通道与目录不符".into());
+        }
+        Ok(())
+    };
+    verify().map_err(|e| {
+        format!("旧版通用密钥已提交，但映射校验失败：{e}；未执行后续激活，不自动撤销密钥安装。")
+    })
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Fake {
+        events: Vec<&'static str>,
+        fail: Option<&'static str>,
+        product: Product,
+        mismatch: u8,
+    }
+    impl Fake {
+        fn step(&mut self, name: &'static str) -> Result<(), String> {
+            self.events.push(name);
+            if self.fail == Some(name) {
+                Err(name.into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    impl Backend for Fake {
+        fn install(&mut self, _: &str) -> Result<(), String> {
+            self.step("install")
+        }
+        fn refresh(&mut self) -> Result<(), String> {
+            self.step("refresh")
+        }
+        fn installed(&mut self, _: Uuid) -> Result<Installed, String> {
+            self.step("read")?;
+            Ok(Installed {
+                id: if self.mismatch == 1 {
+                    Uuid::nil()
+                } else {
+                    self.product.id
+                },
+                suffix: if self.mismatch == 2 {
+                    "wrong".into()
+                } else {
+                    self.product.key[24..].into()
+                },
+                channel: if self.mismatch == 3 {
+                    "wrong".into()
+                } else {
+                    self.product.channel.into()
+                },
+            })
+        }
+    }
+    #[test]
+    fn install_stops_at_each_failure_and_never_claims_activation() {
+        let product = catalog().remove(0);
+        for (index, stage) in ["install", "refresh", "read"].iter().enumerate() {
+            let mut fake = Fake {
+                events: vec![],
+                fail: Some(stage),
+                product: product.clone(),
+                mismatch: 0,
+            };
+            let error = install(&product, &mut fake).unwrap_err();
+            assert_eq!(fake.events, ["install", "refresh", "read"][..=index]);
+            assert!(error.contains("密钥"));
+        }
+        for mismatch in 0..=3 {
+            let mut fake = Fake {
+                events: vec![],
+                fail: None,
+                product: product.clone(),
+                mismatch,
+            };
+            assert_eq!(install(&product, &mut fake).is_ok(), mismatch == 0);
+        }
+    }
+    #[test]
+    fn tampered_catalog_product_is_rejected_before_system_calls() {
+        let mut product = catalog().remove(0);
+        let mut fake = Fake {
+            events: vec![],
+            fail: None,
+            product: product.clone(),
+            mismatch: 0,
+        };
+        product.key = "AAAAA-AAAAA-AAAAA-AAAAA-AAAAA";
+        assert!(install(&product, &mut fake).is_err());
+        assert!(fake.events.is_empty());
+    }
     #[test]
     fn pinned_catalog_has_valid_unique_rows_and_preserves_server_aliases() {
         let products = catalog();

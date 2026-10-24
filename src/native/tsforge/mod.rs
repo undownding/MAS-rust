@@ -23,6 +23,8 @@ pub use runtime::{reset, restore};
 // Product-key installation/configuration integration is still in progress.
 #[cfg_attr(not(test), allow(dead_code))]
 mod key_install;
+#[cfg(windows)]
+mod legacy_key_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod legacy_random;
 mod legacy_windows;
