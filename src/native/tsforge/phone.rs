@@ -1,4 +1,4 @@
-//! Modern-store IID parameters, unique-ID removal and ZeroCID cache records.
+//! Win7/modern IID parameters, unique-ID removal and ZeroCID cache records.
 #![cfg_attr(not(test), allow(dead_code))]
 use super::{
     binary::{invalid, length},
@@ -39,36 +39,54 @@ fn framed(hash: &[u8], data: &[u8]) -> io::Result<Vec<u8>> {
 }
 /// Returns a new plaintext store. Errors leave the borrowed input unchanged.
 pub fn apply(original: &Store, target: &Target, change: Change<'_>) -> io::Result<Store> {
-    if original.format != physical::Format::Modern {
-        return Err(invalid("phone modifier requires modern store layout"));
+    if original.format == physical::Format::Vista {
+        return Err(invalid("Vista phone records are not implemented yet"));
     }
     if target.app.is_nil() || target.sku.is_nil() || target.key.is_nil() {
         return Err(invalid("phone modifier requires nonzero IDs"));
     }
     let name = utf16(&format!("SPPSVC\\{}\\{}", target.app, target.sku));
     let value = utf16(&target.key.to_string());
-    if original
-        .groups
-        .iter()
-        .flatten()
-        .filter(|k| k.name == name)
-        .count()
-        != 1
-    {
-        return Err(invalid("missing or ambiguous product store key"));
-    }
+    let legacy = original.format == physical::Format::Win7;
+    let phone_name = if legacy {
+        "SppPkeyShortAuthenticator"
+    } else {
+        "SppPkeyPhoneActivationData"
+    };
     let mut store = original.clone();
-    let blocks = &mut store
-        .groups
-        .iter_mut()
-        .flatten()
-        .find(|k| k.name == name)
-        .unwrap()
-        .blocks;
-    let index = blocks
+    let blocks = if legacy {
+        &mut store.blocks
+    } else {
+        if store
+            .groups
+            .iter()
+            .flatten()
+            .filter(|k| k.name == name)
+            .count()
+            != 1
+        {
+            return Err(invalid("missing or ambiguous product store key"));
+        }
+        &mut store
+            .groups
+            .iter_mut()
+            .flatten()
+            .find(|k| k.name == name)
+            .unwrap()
+            .blocks
+    };
+    let matches: Vec<_> = blocks
         .iter()
-        .position(|b| b.value == value)
-        .ok_or_else(|| invalid("installed product key absent from store"))?;
+        .enumerate()
+        .filter(|(_, b)| b.value == value && (!legacy || b.key == name))
+        .map(|(index, _)| index)
+        .collect();
+    if matches.len() != 1 {
+        return Err(invalid(
+            "installed product key absent or ambiguous in store",
+        ));
+    }
+    let index = matches[0];
     let mut records = bag::decode(&blocks[index].data, bag::Format::Modern)?;
     let mut cache = None;
     match change {
@@ -80,15 +98,15 @@ pub fn apply(original: &Store, target: &Target, change: Change<'_>) -> io::Resul
         } => {
             let data = match algorithm {
                 Algorithm::Pkey2005 => {
-                    Key2005::new(group, serial, security, false)?.phone_data(false)
+                    Key2005::new(group, serial, security, false)?.phone_data(legacy)
                 }
                 Algorithm::Pkey2009 => {
-                    Key2009::new(group, serial, security, false)?.phone_data(false)
+                    Key2009::new(group, serial, security, false)?.phone_data(legacy)
                 }
             };
             let phone = records
                 .iter_mut()
-                .find(|r| r.key == utf16("SppPkeyPhoneActivationData"))
+                .find(|r| r.key == utf16(phone_name))
                 .ok_or_else(|| invalid("product key lacks phone activation data"))?;
             phone.value = data;
         }
@@ -109,12 +127,17 @@ pub fn apply(original: &Store, target: &Target, change: Change<'_>) -> io::Resul
             }
             let phone = records
                 .iter()
-                .find(|r| r.key == utf16("SppPkeyPhoneActivationData"))
+                .find(|r| r.key == utf16(phone_name))
                 .ok_or_else(|| invalid("product key lacks phone activation data"))?
                 .value
                 .clone();
-            // EncodeString adds a final UTF-16 NUL, in addition to the separator.
-            let hash = Sha256::digest(utf16(&format!("{installation_id}\0{ZERO_CID}")));
+            // EncodeString terminates the IID; modern layouts also include the CID separator.
+            let hash_input = if legacy {
+                installation_id.to_owned()
+            } else {
+                format!("{installation_id}\0{ZERO_CID}")
+            };
+            let hash = Sha256::digest(utf16(&hash_input));
             cache = Some((framed(&hash, HWID)?, framed(&hash, &phone)?));
             if let Some(index) = records
                 .iter()
@@ -131,21 +154,24 @@ pub fn apply(original: &Store, target: &Target, change: Change<'_>) -> io::Resul
                 "msft:Windows/7.0/Phone/Cached/{kind}/{}",
                 target.key
             ));
-            if let Some(index) = blocks.iter().position(|b| b.value == value) {
+            if let Some(index) = blocks
+                .iter()
+                .position(|b| b.value == value && (!legacy || b.key == name))
+            {
                 blocks.remove(index);
             }
             blocks.push(physical::Block {
                 kind: 1,
                 flags: 0,
                 unknown: 0,
-                key: vec![],
+                key: if legacy { name.clone() } else { vec![] },
                 value,
                 data,
             });
         }
     }
     let encoded = store.encode()?;
-    if Store::decode(&encoded, physical::Format::Modern)? != store {
+    if Store::decode(&encoded, original.format)? != store {
         return Err(invalid("phone modifier store roundtrip mismatch"));
     }
     Ok(store)
@@ -273,6 +299,117 @@ mod tests {
             )
             .unwrap()
         );
+    }
+    fn win7_fixture() -> (Store, Target) {
+        let (mut store, target) = fixture();
+        let mut group = store.groups.remove(0).remove(0);
+        let mut block = group.blocks.remove(0);
+        block.key = group.name;
+        block.unknown = 0;
+        let mut records = bag::decode(&block.data, bag::Format::Modern).unwrap();
+        records[0].key = utf16("SppPkeyShortAuthenticator");
+        records[0].value = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        block.data = bag::encode(&records, bag::Format::Modern).unwrap();
+        store.format = physical::Format::Win7;
+        store.blocks.push(block);
+        (store, target)
+    }
+    #[test]
+    fn win7_cache_matches_independent_hash_and_does_not_touch_other_product() {
+        let (mut original, target) = win7_fixture();
+        let mut other = original.blocks[0].clone();
+        other.key = utf16("SPPSVC\\another-product");
+        original.blocks.push(other.clone());
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/tsforge/phone-win7.json"
+        ))
+        .unwrap();
+        let iid = fixture["iid"].as_str().unwrap();
+        let result = apply(
+            &original,
+            &target,
+            Change::ZeroCid {
+                installation_id: iid,
+            },
+        )
+        .unwrap();
+        let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        assert_eq!(result.blocks[1], other);
+        assert_eq!(
+            hex(&result.blocks[2].data),
+            fixture["hwid_cache"].as_str().unwrap()
+        );
+        assert_eq!(
+            hex(&result.blocks[3].data),
+            fixture["key_cache"].as_str().unwrap()
+        );
+        assert_eq!(result.blocks[2].key, original.blocks[0].key);
+        assert_eq!(result.blocks[2].flags, 0);
+        assert_eq!(
+            result,
+            apply(
+                &result,
+                &target,
+                Change::ZeroCid {
+                    installation_id: iid
+                }
+            )
+            .unwrap()
+        );
+        assert_eq!(
+            Store::decode(&result.encode().unwrap(), physical::Format::Win7).unwrap(),
+            result
+        );
+    }
+    #[test]
+    fn win7_iid_uses_short_authenticator_for_both_algorithms() {
+        let (original, target) = win7_fixture();
+        for algorithm in [Algorithm::Pkey2005, Algorithm::Pkey2009] {
+            let result = apply(
+                &original,
+                &target,
+                Change::Iid {
+                    algorithm,
+                    group: 123,
+                    serial: 456,
+                    security: 78,
+                },
+            )
+            .unwrap();
+            let records = bag::decode(&result.blocks[0].data, bag::Format::Modern).unwrap();
+            let expected = match algorithm {
+                Algorithm::Pkey2005 => Key2005::new(123, 456, 78, false).unwrap().phone_data(true),
+                Algorithm::Pkey2009 => Key2009::new(123, 456, 78, false).unwrap().phone_data(true),
+            };
+            assert_eq!(records[0].value, expected);
+            assert_eq!(result.blocks[0].flags, original.blocks[0].flags);
+            assert_eq!(records[3].value, [6]);
+            let removed = apply(&result, &target, Change::RemoveUniqueId).unwrap();
+            let records = bag::decode(&removed.blocks[0].data, bag::Format::Modern).unwrap();
+            assert!(
+                !records
+                    .iter()
+                    .any(|r| r.key == utf16("SppPkeyUniqueIdToken"))
+            );
+            assert_eq!(
+                removed,
+                apply(&removed, &target, Change::RemoveUniqueId).unwrap()
+            );
+        }
+    }
+    #[test]
+    fn duplicate_product_key_blocks_are_rejected_in_both_layouts() {
+        for (mut original, target) in [fixture(), win7_fixture()] {
+            if original.format == physical::Format::Win7 {
+                original.blocks.push(original.blocks[0].clone());
+            } else {
+                let blocks = &mut original.groups[0][0].blocks;
+                blocks.push(blocks[0].clone());
+            }
+            let before = original.clone();
+            assert!(apply(&original, &target, Change::RemoveUniqueId).is_err());
+            assert_eq!(original, before);
+        }
     }
     #[test]
     fn missing_and_ambiguous_records_fail_without_modifying_original() {

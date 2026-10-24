@@ -14,3 +14,10 @@ def frame(value):
 (root / 'tests/fixtures/tsforge/phone.json').write_text(json.dumps({
     'iid': iid, 'hash': digest.hex(), 'hwid_cache': frame(hwid).hex(), 'key_cache': frame(bytes([1,2,3])).hex()
 }, indent=2) + '\n')
+# Windows 7 hashes only the terminated IID; the stored authenticator is 8 bytes.
+digest = hashlib.sha256((iid + '\0').encode('utf-16le')).digest()
+shortauth = bytes.fromhex('0102030405060708')
+(root / 'tests/fixtures/tsforge/phone-win7.json').write_text(json.dumps({
+    'iid': iid, 'hash': digest.hex(), 'hwid_cache': frame(hwid).hex(),
+    'key_cache': frame(shortauth).hex()
+}, indent=2) + '\n')
