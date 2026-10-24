@@ -5,6 +5,21 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+pub fn method(option: usize, build: u32) -> Result<super::activation_flow::Method, String> {
+    use super::activation_flow::Method;
+    super::crypto::Version::detect(build).map_err(|e| e.to_string())?;
+    let method = match option {
+        0 if build >= 26100 => Method::StaticCid,
+        0 | 2 => Method::ZeroCid,
+        1 => Method::StaticCid,
+        3 => return Err("Windows KMS Host 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
+        _ => return Err("未知 TSforge 方法".into()),
+    };
+    if method == Method::StaticCid && build < 9200 {
+        return Err("StaticCID 需要 Windows 8 或更高版本，未修改主机许可。".into());
+    }
+    Ok(method)
+}
 pub struct License {
     pub path: PathBuf,
     pub xml: String,
@@ -90,6 +105,26 @@ pub fn prepare(root: &Path, edition: &str, build: u32) -> Result<Vec<License>, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn host_method_rejects_unsupported_options_before_license_work() {
+        use super::super::activation_flow::Method;
+        for build in [6000, 6002, 7600, 7601, 9200, 9600, 26100] {
+            assert_eq!(method(2, build).unwrap(), Method::ZeroCid);
+            assert_eq!(method(1, build).is_ok(), build >= 9200);
+            assert!(method(3, build).is_err());
+            assert!(method(4, build).is_err());
+            assert_eq!(
+                method(0, build).unwrap(),
+                if build >= 26100 {
+                    Method::StaticCid
+                } else {
+                    Method::ZeroCid
+                }
+            );
+        }
+        assert!(method(0, 7603).is_err());
+        assert!(method(0, 9201).is_err());
+    }
     #[test]
     fn import_failure_retains_completed_count_and_stops() {
         let files = (0..3)

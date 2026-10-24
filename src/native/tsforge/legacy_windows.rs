@@ -1,4 +1,4 @@
-//! Public legacy key catalogs from pinned :ts_oldks and :ts_winvista.
+//! Public legacy key catalogs from pinned :ts_oldks, :ts_winvista and :ts_whost_vista.
 #![cfg_attr(not(test), allow(dead_code))]
 use super::crypto::Version;
 use std::collections::HashSet;
@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub enum Method {
     Kms,
     Phone,
+    Host,
 }
 #[derive(Debug, Clone)]
 pub struct Product {
@@ -20,6 +21,7 @@ pub struct Product {
 pub fn catalog() -> Vec<Product> {
     include_str!("../../../vendor/mas/native/tsforge-legacy-windows.tsv")
         .lines()
+        .chain(include_str!("../../../vendor/mas/native/tsforge-vista-host.tsv").lines())
         .map(|line| {
             let fields: Vec<_> = line.split('\t').collect();
             assert_eq!(fields.len(), 6, "pinned legacy catalog columns");
@@ -27,6 +29,7 @@ pub fn catalog() -> Vec<Product> {
                 method: match fields[0] {
                     "kms" => Method::Kms,
                     "phone" => Method::Phone,
+                    "host" => Method::Host,
                     _ => panic!("pinned legacy method"),
                 },
                 version: match fields[1] {
@@ -42,7 +45,7 @@ pub fn catalog() -> Vec<Product> {
         })
         .collect()
 }
-/// No match means no generic-key route. Never choose an ID absent from this PC.
+/// No match means no fixed-key route. Never choose an ID absent from this PC.
 pub fn select(
     version: Version,
     method: Method,
@@ -98,7 +101,7 @@ pub fn install(product: &Product, backend: &mut impl Backend) -> Result<(), Stri
         return Err("所选密钥不在固定旧版目录中，未执行安装。".into());
     }
     backend.install(product.key).map_err(|e| {
-        format!("旧版通用密钥安装调用失败：{e}；系统调用可能已改变密钥，不自动回滚或重试。")
+        format!("旧版固定密钥安装调用失败：{e}；系统调用可能已改变密钥，不自动回滚或重试。")
     })?;
     let mut verify = || -> Result<(), String> {
         backend.refresh()?;
@@ -112,7 +115,7 @@ pub fn install(product: &Product, backend: &mut impl Backend) -> Result<(), Stri
         Ok(())
     };
     verify().map_err(|e| {
-        format!("旧版通用密钥已提交，但映射校验失败：{e}；未执行后续激活，不自动撤销密钥安装。")
+        format!("旧版固定密钥已提交，但映射校验失败：{e}；未执行后续激活，不自动撤销密钥安装。")
     })
 }
 #[cfg(test)]
@@ -161,6 +164,36 @@ mod tests {
                 },
             })
         }
+    }
+    #[test]
+    fn vista_host_uses_first_installed_catalog_match_and_verifies_csvlk() {
+        let hosts: Vec<_> = catalog()
+            .into_iter()
+            .filter(|p| p.method == Method::Host)
+            .collect();
+        assert_eq!(hosts.len(), 21);
+        let mut ids: HashSet<_> = hosts.iter().map(|p| p.id).collect();
+        assert_eq!(ids.len(), 4);
+        for expected in [
+            "c90d1b4e-8aa8-439e-8b9e-b6d6b6a6d975",
+            "56df4151-1f9f-41bf-acaa-2941c071872b",
+            "c448fa06-49d1-44ec-82bb-0085545c3b51",
+        ] {
+            let product = select(Version::Vista, Method::Host, "ServerWeb", &ids).unwrap();
+            assert_eq!(product.id, Uuid::parse_str(expected).unwrap());
+            let mut fake = Fake {
+                events: vec![],
+                fail: None,
+                product: product.clone(),
+                mismatch: 0,
+            };
+            install(&product, &mut fake).unwrap();
+            fake.mismatch = 3;
+            assert!(install(&product, &mut fake).is_err());
+            ids.remove(&product.id);
+        }
+        assert!(select(Version::Vista, Method::Host, "ServerWeb", &ids).is_none());
+        assert!(select(Version::Win7, Method::Host, "Enterprise", &ids).is_none());
     }
     #[test]
     fn method_and_version_select_fixed_or_generated_key_without_fallback() {
@@ -230,14 +263,15 @@ mod tests {
     #[test]
     fn pinned_catalog_has_valid_unique_rows_and_preserves_server_aliases() {
         let products = catalog();
-        assert_eq!(products.len(), 66);
+        assert_eq!(products.len(), 87);
         let mut unique = HashSet::new();
         for p in &products {
             assert!(!p.id.is_nil());
             assert!(unique.insert((
                 format!("{:?}", p.method),
                 format!("{:?}", p.version),
-                p.edition
+                p.edition,
+                p.id
             )));
             let groups: Vec<_> = p.key.split('-').collect();
             assert_eq!(groups.len(), 5);
@@ -248,6 +282,10 @@ mod tests {
             }));
             assert!(!p.key.contains('%'));
             match p.method {
+                Method::Host => {
+                    assert_eq!(p.version, Version::Vista);
+                    assert_eq!(p.channel, "Volume:CSVLK");
+                }
                 Method::Kms => assert_eq!(p.channel, "Volume:GVLK"),
                 Method::Phone => {
                     assert_eq!(p.version, Version::Vista);

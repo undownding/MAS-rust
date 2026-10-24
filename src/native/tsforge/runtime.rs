@@ -99,15 +99,6 @@ pub(super) fn storage_preflight() -> Result<Physical, String> {
     storage_layout::physical(build, &platform::system_file("")?, configured.as_deref())
 }
 
-/// Activation backends still require the modern single-file layout.
-pub(super) fn preflight() -> Result<PathBuf, String> {
-    let layout = storage_preflight()?;
-    if layout.version != Version::Modern {
-        return Err("原生 TSforge 激活尚未接入旧版存储；重置和恢复使用独立版本化路径。".into());
-    }
-    Ok(layout.paths[0].clone())
-}
-
 pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
     let layout = storage_preflight()?;
     let path = &layout.paths[0];

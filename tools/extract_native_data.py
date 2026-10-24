@@ -131,3 +131,14 @@ section = current.split('if defined esuexistsup if defined _vis (', 1)[1].split(
 key = re.search(r'^set key=([A-Z0-9-]{29})$', section, re.M).group(1)
 server_esu = next(row.split('\t')[0] for row in (DEST / 'tsforge-esu.tsv').read_text().splitlines() if '\tServer-ESU-PA' in row)
 (DEST / 'tsforge-vista-esu.tsv').write_text(server_esu + '\t' + key + '\n')
+
+# Vista host catalog order matters when multiple CSVLK licenses are present.
+section = current.split('\n:ts_whost_vista\n', 1)[1].split(') do (', 1)[0]
+rows = []
+for line in section.splitlines():
+    if re.match(r'^[0-9a-f]{8}-', line):
+        activation, key, editions = line.replace('%f%', '').split('_', 2)
+        for edition in editions.strip('-').split('-'):
+            rows.append('\t'.join(['host', 'vista', activation, key, 'Volume:CSVLK', edition]))
+assert len(rows) == 21
+(DEST / 'tsforge-vista-host.tsv').write_text('\n'.join(rows) + '\n')

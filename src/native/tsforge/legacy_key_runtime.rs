@@ -68,10 +68,10 @@ pub fn install(
     }
     let licensing = Licensing::new()?;
     let product = discover(version, method, edition, &licensing)?
-        .ok_or("未找到匹配的本机旧版许可证与通用密钥，未执行安装。")?;
+        .ok_or("未找到匹配的本机旧版许可证与固定密钥，未执行安装。")?;
     legacy_windows::install(&product, &mut Native(licensing))?;
     report(&format!(
-        "旧版通用密钥映射已验证：{} · {} · 末五位 {}；尚未激活。",
+        "旧版固定密钥映射已验证：{} · {} · 末五位 {}；尚未激活。",
         product.edition,
         product.channel,
         &product.key[24..]

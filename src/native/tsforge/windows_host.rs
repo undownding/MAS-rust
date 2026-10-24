@@ -17,24 +17,26 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
         return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
     }
     let context = Context::read(report)?;
-    if context.build < 9600 {
-        return Ok(None);
-    }
-    let method = match option {
-        0 if context.build >= 26100 => Method::StaticCid,
-        0 | 2 => Method::ZeroCid,
-        1 => Method::StaticCid,
-        3 => return Err("Windows KMS Host 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
-        _ => return Err("未知 TSforge 方法".into()),
-    };
+    let method = host_licenses::method(option, context.build)?;
     let method = connectivity::resolve(method, option == 0, || connectivity::connected(report))?;
     if method == Method::Kms4k {
         return Err("Auto 未确认联网，KMS Host 不支持离线 KMS4k，未导入或安装许可".into());
     }
-    super::runtime::preflight()?;
+    let layout = super::runtime::storage_preflight()?;
     report(
         "KMS Host 使用主机许可证，会使 Software Protection 服务持续运行；部分 Windows 版本可能随后显示不同的版本名称。",
     );
+    if layout.version == super::crypto::Version::Vista {
+        let product = super::legacy_key_runtime::install(
+            layout.version,
+            super::legacy_windows::Method::Host,
+            &context.edition,
+            report,
+        )?;
+        let result = super::phone_runtime::zero_cid(product.id, report)
+            .map_err(|e| format!("Vista CSVLK 密钥已安装，后续主机激活失败：{e}；不回退脚本。"));
+        return reevaluation::finish(result, || reevaluation::run(context.build, report)).map(Some);
+    }
     let files = host_licenses::prepare(
         &platform::system_file(r"spp\tokens\skus")?,
         &context.edition,
