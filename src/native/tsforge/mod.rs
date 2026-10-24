@@ -10,7 +10,7 @@ mod sl;
 #[cfg_attr(not(test), allow(dead_code))]
 mod token;
 mod transaction;
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod variable_bag;
 
 #[cfg(windows)]
@@ -21,14 +21,16 @@ pub use runtime::{reset, restore};
 // Product-key installation/configuration integration is still in progress.
 #[cfg(test)]
 mod key_install;
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod legacy_random;
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod pkey_config;
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod product_key;
 
 #[cfg(windows)]
 mod registry_backup;
 
 mod registry_targets;
+
+mod generated_key;

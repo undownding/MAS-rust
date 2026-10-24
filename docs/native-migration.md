@@ -252,3 +252,14 @@ Windows 测试新增经原生 SLC API 读取真实 Windows 许可证内配置并
 新增固定注册表映射与完整组校验：Windows ProductId/DigitalProductId/DigitalProductId4 三项必需；IE Registration 三项可整组出现；NetworkService KmsHostConfig 可选。拒绝未知、重复或不完整组，不创建缺失的目标键。备份在校验后保持为内存快照，选择目标与恢复使用同一份数据，避免重复读取不同清单。令牌解码器已进入 Windows 运行时。
 
 85 项本地测试及 Linux/Windows GNU Clippy 通过，新增完整组合与拒绝规则测试；实际 Windows CI 继续单独核验。GUI 确认文案、README 和本地 Windows 包同步更新；重新截取并核对真实 Linux 界面，默认折叠状态下截图内容未变化。联合恢复尚无真实系统许可存储的实机验收，安装流程仍未生成联合备份；下一步接入 PKEY2005/PKEY2009 安装及后续激活逻辑，不能将本轮视为 TSforge 完整迁移。
+
+
+### 生成密钥准备与 PKEY2009 原生 API 安装（进行中）
+
+新增 `generated_key.rs`，将原生 SLC 读取、PKeyConfig 查找、范围选择与密钥编码串联。先读取所选 SKU 的配置；找不到对应产品时枚举同一应用的 SKU，按上游 LoadAllConfigs 跳过无关的不可读取配置，最终仍必须解析到目标产品。PKEY2005/PKEY2009 均生成安全字段为零、升级位关闭的密钥，并保留所选范围元数据。配置解析、VariableBag 和密钥编码模块现已纳入 Windows 构建。
+
+PKEY2009 安装按上游先卸载当前产品密钥、再调用 SLInstallProofOfPurchase，并增加所选 SKU 的密钥映射回读。多个已有密钥或空 ID 的歧义映射在卸载前拒绝；PKEY2005 明确留给存储/注册表安装路径。错误区分尚未完成变更、旧密钥已卸载、新密钥已安装但未验证的阶段。SLC 调用不具备事务回滚，不能宣称安装失败后旧密钥自动还原。
+
+新增四项本地编排测试覆盖无旧密钥、正常顺序、卸载/安装失败、映射不一致、错误算法和零 SKU；89 项本地测试及双平台 Clippy 通过。另增 Windows 只读测试，从真实 Windows SKU 配置准备生成密钥，但不调用安装 API。此前联合事务和字符串边界修复 CI 40115772766、联合恢复后端 CI 40115978732 均成功。
+
+当前模块是后续 TSforge 激活流程的内部组件，GUI 激活按钮尚未改用它；PKEY2005 系统元数据收集、双存储/注册表安装及完整激活流程仍待接入。本轮没有界面或已启用入口变化，不更新截图或测试包。

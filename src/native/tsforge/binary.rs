@@ -64,7 +64,6 @@ pub fn align(output: &mut Vec<u8>, alignment: usize) {
 }
 
 /// CRC-32/BZIP2, not the reflected CRC used by ZIP files.
-#[cfg(test)]
 pub fn crc32(bytes: &[u8]) -> u32 {
     let mut crc = u32::MAX;
     for byte in bytes {
