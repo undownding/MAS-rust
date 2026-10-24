@@ -11,16 +11,16 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.6.0-dev.6：Windows KMS Host 接入 Rust，补齐 CSVLK 许可导入、主机选择与激活后处理；Windows / ESU 原生入口继续保留，均尚待实机验收。**
+**v0.6.0-dev.7：Office KMS Host 与 APPX 旁加载许可也接入 Rust；Windows / ESU / KMS Host 原生入口继续保留，均尚待实机验收。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-TSforge Windows / ESU / Windows KMS Host 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；旧版存储和评估版仍转入兼容引擎，原生失败后不会自动再运行兼容激活。重置与备份恢复也使用 Rust。Office、组合激活、Office KMS Host、APPX 等其他 TSforge 入口及部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+TSforge Windows / ESU / KMS Host / APPX 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；旧版存储和评估版仍转入兼容引擎，原生失败后不会自动再运行兼容激活。重置与备份恢复也使用 Rust。Office 客户端、Project/Visio 和组合激活等其他 TSforge 入口及部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 
 ![MAS Rust 激活页实际运行截图](screenshots/mas-rust-preview.png)
 
-截图来自 Linux 下的实际运行画面。Linux 为预览模式，因此执行按钮置灰；激活和许可证操作需要在 Windows 上运行。图中 TSforge 已展开，Windows、ESU、Windows KMS Host 按钮标注 Rust / 兼容，重置按钮标注 Rust；Online KMS 和高级选项处于折叠状态。内容区随窗口宽度展开，滚动条固定在右侧。
+截图来自 Linux 下的实际运行画面。Linux 为预览模式，因此执行按钮置灰；激活和许可证操作需要在 Windows 上运行。图中 TSforge 已展开，Windows、ESU、两种 KMS Host 和 APPX 按钮标注 Rust / 兼容，重置按钮标注 Rust；Online KMS 和高级选项处于折叠状态。内容区随窗口宽度展开，滚动条固定在右侧。
 
 ![MAS Rust 许可证管理页](screenshots/mas-rust-license.png)
 
@@ -39,7 +39,9 @@ TSforge Windows / ESU / Windows KMS Host 单项入口已连接原生 SKU/订阅�
 | TSforge Windows 单项 | Rust：build 9600+ 非评估版；旧版/评估版兼容；支持默认、SCID、ZCID、KMS4k |
 | TSforge ESU 单项 | Rust：build 9600+；旧版兼容；按本机 ESU 许可证和版本/UBR 筛选，支持 SCID/ZCID |
 | TSforge Windows KMS Host | Rust：build 9600+；旧版兼容；CSVLK 许可准备、SCID/ZCID 和主机计数处理 |
-| TSforge Office / Project / Visio / Windows+ESU+Office / Office KMS Host / APPX | 兼容引擎，尚未切换到原生执行链 |
+| TSforge Office KMS Host | Rust：现代存储；按固定目录选择本机已有 2010–2024 主机许可，支持 SCID/ZCID；旧存储兼容 |
+| TSforge APPX 旁加载许可 | Rust：Windows 8.1 存储路径；Windows 8 存储仍兼容；其他版本直接跳过 |
+| TSforge Office / Project / Visio / Windows+ESU+Office | 兼容引擎，尚未切换到原生执行链 |
 | TSforge 重置 / 备份恢复 | Rust：标记、rearm 计数、宽限/评估计时器、密钥变更锁；分阶段备份与校验恢复 |
 | Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 支持 C2R 转换及 MSI 批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
@@ -79,7 +81,13 @@ ESU 仅处理本机已有、适用于当前版本的许可证，家庭版等新�
 
 此入口安装 **KMS 主机许可证**，与 KMS 客户端不同。确认窗口会说明：Software Protection 服务将持续运行，部分 Windows 版本可能随后显示不同的版本名称。build 10586+ 先导入当前版本目录中的 CSVLK 许可，再选择覆盖产品最多的适用主机 SKU；密钥准备必须通过 Volume:CSVLK 通道校验。许可导入失败会报告已完成数量，不自动撤销。
 
-默认方法在 build 26100+ 使用 StaticCID，较旧版本使用 ZeroCID；明确拒绝 KMS4k，联网检查在许可导入前完成。激活状态验证通过后，写入上游对应的 25 个客户端计数并刷新许可，再提交 SPP 任务重评估。旧版存储仍使用兼容引擎；Office KMS Host 入口尚未迁移。此流程尚无真实系统的主机激活验收。
+默认方法在 build 26100+ 使用 StaticCID，较旧版本使用 ZeroCID；明确拒绝 KMS4k，联网检查在许可导入前完成。激活状态验证通过后，写入上游对应的 25 个客户端计数并刷新许可，再提交 SPP 任务重评估。旧版存储仍使用兼容引擎；Office KMS Host 走独立的已有许可证筛选流程。此流程尚无真实系统的主机激活验收。
+
+### Office KMS Host 与 APPX
+
+Office KMS Host 原生入口从两个 Office 应用 ID 中筛选已安装的 2010、2013、2016、2019、2021、2024 主机许可证；没有许可证会提示先安装对应许可证包，不下载或猜测产品。逐项安装生成密钥、激活并验证 CSVLK 主机计数，部分失败保留各产品结果。它不用于激活本机 Office 客户端应用，不支持 KMS4k。
+
+APPX 入口只处理上游 Windows 8/8.1 的 4 类旁加载许可证，其他系统直接跳过；Windows 8 的旧存储仍走兼容路径。原生存储后端不等于此 GUI 已支持所有旧系统，GUI 的运行要求仍见构建说明。两种入口均通过联网判断、原生结果校验与 SPP 重评估；均未完成真实系统激活验收。
 
 ### Ohook 原生安装与卸载
 
@@ -97,7 +105,7 @@ DLL 基于固定版本的 [ohook-rs](https://github.com/massgravel/ohook-rs/tree
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.6.0-dev.6 的 TSforge Windows / ESU / Windows KMS Host 激活和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.6.0-dev.7 的 TSforge Windows / ESU / KMS Host / APPX 和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 

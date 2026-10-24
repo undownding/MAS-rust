@@ -43,3 +43,5 @@ collected from a user's KMS service.
 `native/tsforge-editions.tsv` preserves the SKU/edition table and legacy alias order from the pinned `:ts_getedition:` section, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
 
 `native/tsforge-esu.tsv` contains the 17 ESU product/edition rows from the pinned `:ts_esu:` section, including its Windows 10 edition placeholders, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
+
+`native/tsforge-office-host.tsv` and `native/tsforge-appx.tsv` preserve the fixed Office KMS Host and APPX sideloading product catalogs from the pinned `:ts_ohost:` and `:ts_appxlob:` sections, extracted by `tools/extract_native_data.py` (GPL-3.0-only).

@@ -84,4 +84,11 @@ mod windows_host;
 pub use windows_context::activate as activate_windows;
 #[cfg(windows)]
 pub use windows_host::activate as activate_windows_host;
+mod auxiliary;
+#[cfg(windows)]
+mod auxiliary_runtime;
+#[cfg(windows)]
+pub use auxiliary::Scope as AuxiliaryScope;
+#[cfg(windows)]
+pub use auxiliary_runtime::activate as activate_auxiliary;
 mod windows_edition;

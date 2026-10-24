@@ -83,3 +83,9 @@ section = current.split('if not defined isThinpc if not defined isltsc for %%# i
 rows = ['\t'.join(line.split('_', 2)) for line in section.splitlines() if re.match(r'^[0-9a-f]{8}-', line)]
 assert len(rows) == 17
 (DEST / 'tsforge-esu.tsv').write_text('\n'.join(rows) + '\n')
+
+for label, name, count in [('ts_ohost', 'tsforge-office-host', 6), ('ts_appxlob', 'tsforge-appx', 4)]:
+    section = current.split('\n:' + label + '\n', 1)[1].split(') do (', 1)[0]
+    rows = ['\t'.join(line.split('_', 1)) for line in section.splitlines() if re.match(r'^[0-9a-f]{8}-', line)]
+    assert len(rows) == count
+    (DEST / (name + '.tsv')).write_text('\n'.join(rows) + '\n')

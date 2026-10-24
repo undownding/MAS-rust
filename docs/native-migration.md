@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU/Windows KMS Host 单项（build 9600+，Windows 评估版除外）及重置已接入 Rust；其他范围仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU/KMS Host/APPX 的现代存储入口及重置已接入 Rust；其他范围仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的 Office/组合/Office KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的 Office 客户端/Project/Visio/组合、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -394,3 +394,12 @@ ESU 按钮现已接入现代原生后端，旧存储仍明确转兼容；Windows
 Windows KMS Host 按钮接到现代原生后端，旧存储明确转兼容，原生错误不触发兼容重试。确认窗口说明 CSVLK 主机许可不同于客户端、导入/安装不自动撤销、服务持续运行及系统版本名称可能变化。Windows/ESU/Host 的混合范围标签同步，Office KMS Host 仍为兼容。
 
 126 项本地测试及双平台 Clippy 通过，显式入口分派测试现覆盖 `/Z-WinHost`。README 与实际 Linux 预览截图更新，构建 dev.6 Windows 本地测试包。新增 GUI 路由不代表实际主机激活已经验收；真实许可证导入、主机激活和计数仍需实机验证。dev.5 联网/SPP CI 40120868061 已成功，包含只读 NLM 查询和系统 SPP 导出加载；Host 后端 CI 40121163362 仍在运行。
+
+
+### Office KMS Host / APPX 目录与 GUI 接入（v0.6.0-dev.7）
+
+从固定上游提取 6 项 Office Host 和 4 项 APPX 目录，保留顺序并只选择本机已有 GUID。Office Host 分别通过原生 WMI 查询两个 Office Application ID，与上游 dk_actids 的 SoftwareLicensingProduct 查询一致；未安装的应用自然返回空列表。APPX 保留 build 9200–9600 限制，其他系统直接跳过，旧存储明确兼容，现代存储走原生安装/SCID/ZeroCID。两种范围均拒绝 KMS4k；Office Host 要求生成配置通道为 Volume:CSVLK。
+
+新增 `auxiliary.rs`/`auxiliary_runtime.rs`，串联目录筛选、Auto 联网判断、逐产品安装/激活/结果验证与公共 SPP 重评估。部分失败继续处理后续产品并保留身份、数量与错误；没有许可证时不下载安装包。两个 GUI 按钮切换为明确的 Rust/兼容范围，Office Host 确认窗口说明它不是 Office 客户端激活及服务持续运行影响。
+
+129 项本地测试及双平台 Clippy 通过；新增系统构建边界、目录交集/顺序、部分失败继续测试，Windows 专用测试只查询实际安装的许可证，不运行激活。README、截图和本地 Windows 包同步更新至 dev.7。Windows KMS Host 后端 CI 40121163362 与 GUI CI 40121347942 仍在运行；新入口没有真实激活验收。Office 客户端、Project/Visio、组合、旧存储及修复/高级工具仍有待迁移。
