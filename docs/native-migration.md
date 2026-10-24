@@ -316,3 +316,14 @@ Windows CI 40116625651 的只读准备测试发现某些 SKU 没有密钥映射�
 独立 Python 向量使用各 GUID 字段均非零的固定样本，逐字节核对字节序、时间戳和六项 VariableBag。新增三项本地测试覆盖完整结构、未知字段保留、重复执行、时间戳溢出及无副作用拒绝；105 项本地测试及双平台 Clippy 通过。Windows 专用测试只验证随机 GUID 的版本、变体和唯一性，不修改许可。SCID/WinHTTP Windows CI 40117804715 已成功，KMS4k CI 40118152173 仍在运行。
 
 当前仍为 build 9600+ 的内部后端，Vista/7/8 Host Charge 分支和激活产品选择仍待迁移，GUI 入口尚未切换。本轮未执行真实 KMS Host 修改，没有界面或已启用入口变化。
+
+
+### Windows 产品选择与原生只读采集（进行中）
+
+新增 `product_selection.rs` 和 `selection_runtime.rs`，迁移固定上游 `:wintsid:` 的 Windows-ActID 选择：按 EditionID 与 OEM/MAK/Retail、KMS Client、AVMA 或 KMS Host 通道筛选，经原生 WMI/SLC 读取许可策略，再结合两种 SKU 目录的非 Beta/Test 文件和 PKeyConfig 排除条件选择产品。KMS Host 优先按 KmsCountedIdList 数量降序；相同数量固定保留 WMI 顺序，避免依赖 PowerShell 哈希表的不稳定顺序。该采集过程只读，不停服务、不安装密钥。
+
+选择配置解析与密钥生成解析分开：没有可生成密钥范围的配置仍保留描述和排除信息；只有 PKEY2009 范围应用 WAU 排除。保留上游 Beta/RC/Next/Test/Pre 回退顺序及两处字面比较语义（`CountrySpecific` 的标量比较、单引号 `$edition`），不悄悄改成子串或变量比较。无法解析策略、重复产品 ID、无效目录名及过大文件明确报错；许可文件支持 UTF-8 与带 BOM 的 UTF-16，PKeyConfig 不受网络响应的 1 MiB 限制。
+
+110 项本地测试及双平台 Clippy 通过，新增通道排序、文件交集、语言锁定、Host 优先级、Beta 回退、WAU 排除、缺少密钥范围及 XML 策略作用域测试。Windows 专用测试覆盖文件匹配/编码并从真实系统执行只读选择；新测试仍待 Windows CI。前两轮 KMS4k CI 40118152173、Host Charge CI 40118416497 均已成功。
+
+此选择器尚未接入 GUI 激活入口；Windows 版本/订阅与永久激活判断、ESU/Office 选择及完整安装激活编排仍待连接，不能视为完整迁移。本轮没有界面变化，沿用现有截图和测试包；未运行真实激活操作。

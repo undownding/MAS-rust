@@ -255,6 +255,62 @@ pub fn extract_config(license: &str) -> Result<String> {
     String::from_utf8(bytes).map_err(|_| invalid("pkeyConfigData is not UTF-8"))
 }
 
+#[derive(Debug, Clone)]
+pub struct SelectionProduct {
+    pub activation_id: Uuid,
+    pub edition: String,
+    pub description: String,
+    pub pkey2009: bool,
+    pub has_wau_range: bool,
+}
+
+/// Selection needs configuration descriptions even when no installable range
+/// exists. Keep this separate from parse_config's key-generation constraints.
+pub fn parse_selection_config(xml: &str) -> Result<Vec<SelectionProduct>> {
+    let doc = document(xml)?;
+    let root = doc.root_element();
+    if !root.has_tag_name((CONFIG_NS, "ProductKeyConfiguration")) {
+        return Err(invalid("missing ProductKeyConfiguration root"));
+    }
+    let mut pkey2009 = HashSet::new();
+    for parent in children(root, CONFIG_NS, "PublicKeys") {
+        for node in children(parent, CONFIG_NS, "PublicKey") {
+            if field(node, "AlgorithmId")?.eq_ignore_ascii_case("msft:rm/algorithm/pkey/2009") {
+                pkey2009.insert(number(node, "GroupId")?);
+            }
+        }
+    }
+    let mut wau = HashSet::new();
+    for parent in children(root, CONFIG_NS, "KeyRanges") {
+        for node in children(parent, CONFIG_NS, "KeyRange") {
+            if field(node, "EulaType")?
+                .to_ascii_uppercase()
+                .contains("WAU")
+            {
+                wau.insert(id(node, "RefActConfigId")?);
+            }
+        }
+    }
+    let mut known = HashSet::new();
+    let mut result = Vec::new();
+    for parent in children(root, CONFIG_NS, "Configurations") {
+        for node in children(parent, CONFIG_NS, "Configuration") {
+            let activation_id = id(node, "ActConfigId")?;
+            if !known.insert(activation_id) {
+                return Err(invalid("duplicate selection activation configuration"));
+            }
+            result.push(SelectionProduct {
+                activation_id,
+                edition: field(node, "EditionId")?,
+                description: field(node, "ProductDescription")?,
+                pkey2009: pkey2009.contains(&number(node, "RefGroupId")?),
+                has_wau_range: wau.contains(&activation_id),
+            });
+        }
+    }
+    Ok(result)
+}
+
 pub fn parse_config(xml: &str) -> Result<Vec<Product>> {
     let doc = document(xml)?;
     let mut roots = doc
@@ -340,6 +396,22 @@ pub fn parse_config(xml: &str) -> Result<Vec<Product>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn selection_retains_configs_without_key_ranges() {
+        let xml = r#"<ProductKeyConfiguration xmlns="http://www.microsoft.com/DRM/PKEY/Configuration/2.0"><PublicKeys><PublicKey><GroupId>1</GroupId><AlgorithmId>msft:rm/algorithm/pkey/2009</AlgorithmId></PublicKey></PublicKeys><Configurations><Configuration><ActConfigId>{00000000-0000-0000-0000-000000000001}</ActConfigId><RefGroupId>1</RefGroupId><EditionId>Professional</EditionId><ProductDescription>Tencent</ProductDescription></Configuration></Configurations></ProductKeyConfiguration>"#;
+        let entries = super::parse_selection_config(xml).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].description, "Tencent");
+        assert!(entries[0].pkey2009);
+        assert!(!entries[0].has_wau_range);
+        assert!(super::parse_config(xml).unwrap().is_empty());
+        let ranges = r#"<KeyRanges><KeyRange><RefActConfigId>{00000000-0000-0000-0000-000000000001}</RefActConfigId><EulaType>Retail:WAU</EulaType></KeyRange></KeyRanges>"#;
+        let xml = xml.replace(
+            "</ProductKeyConfiguration>",
+            &format!("{ranges}</ProductKeyConfiguration>"),
+        );
+        assert!(super::parse_selection_config(&xml).unwrap()[0].has_wau_range);
+    }
     use super::*;
     const XML: &str = include_str!("../../../tests/fixtures/tsforge/pkey-config.xml");
     fn envelope(xml: &str) -> String {

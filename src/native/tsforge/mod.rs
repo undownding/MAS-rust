@@ -61,3 +61,7 @@ mod host_charge;
 
 #[cfg(windows)]
 mod host_runtime;
+
+mod product_selection;
+#[cfg(windows)]
+mod selection_runtime;
