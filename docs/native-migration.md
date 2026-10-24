@@ -697,3 +697,11 @@ Windows KMS Host 单项移除旧版兼容分派：Win7/Win8 复用生成 CSVLK�
 新增组合测试覆盖 Vista/Win7 方法、只调用适用范围、共享清理执行一次，以及不支持的方法/构建完全不触发清理。201 项 Linux 测试及双目标 Clippy 通过；dev.14 Windows CI 40128735095 已成功，dev.15/16/17 CI 40128891764/40129069941/40129261202 仍在运行。所有已迁移 TSforge 单项与组合入口的引擎回退改为明确错误，异常空结果不会触发上游脚本；按钮统一标记 Rust。
 
 README、界面、截图与 Windows 本地包更新至 dev.18。未执行真实许可修改，GUI 最低系统要求不变，旧版实机验收仍未完成；修复/高级工具及各功能剩余分支继续迁移，不能据此认定整个 MAS 已纯 Rust 化。
+
+### 原生 Office 快速修复入口（v0.6.0-dev.19）
+
+迁移上游 repairoffice 的 MSI 2010–2016、C2R 2013、C2R 2016+ 发现及启动：Rust 读取两个注册表视图，验证 Picker DLL/ProPlus 许可目录，按上游优先顺序定位 Setup Controller、integratedoffice.exe 或 OfficeClickToRun.exe。使用独立参数启动本机程序，不调用 CMD/PowerShell；MSI 打开修复选项，C2R 2013 使用 REPAIRUI/RERUNMODE，C2R 2016+ 使用 QuickRepair。2010 C2R 和 UWP 不执行修复。
+
+工具箱新增确认后的独立入口，提示保存文档、关闭 Office。执行前完成发现；发现安装但修复程序缺失时报告错误。多个视图指向同一路径只启动一次，记录每个退出码并继续处理其他修复程序；正常退出不声称 Office 许可或修复结果已验证。202 项 Linux 测试及双目标 Clippy 通过，测试覆盖参数、路径拒绝、重复路径和失败结果。Windows CI 的新增测试只读取安装信息，不启动修复程序。
+
+README、界面截图和本地包更新至 dev.19。未实际运行 Office 修复，GUI 系统要求不变；完整修复菜单中的其他分支仍使用兼容引擎。dev.15 Windows CI 40128891764 已成功，dev.16/17/18 CI 40129069941/40129261202/40129460472 仍在运行。

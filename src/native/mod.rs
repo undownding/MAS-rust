@@ -45,3 +45,6 @@ mod pe_tests;
 
 #[cfg(any(windows, test))]
 pub mod tsforge;
+
+#[cfg(any(windows, test))]
+pub mod office_repair;

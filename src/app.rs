@@ -26,6 +26,7 @@ enum Job {
     Engine(Operation, Options),
     License(Product, Action),
     RestoreBackup(String),
+    RepairOffice,
 }
 
 pub struct MasApp {
@@ -75,6 +76,7 @@ impl MasApp {
                 ctx.request_repaint();
             };
             let result = match job {
+                Job::RepairOffice => engine::repair_office(&report),
                 Job::Engine(op, options) => engine::run(op, options, &report),
                 Job::RestoreBackup(path) => engine::restore_tsforge(&path, &report),
                 Job::License(product, action) => {
@@ -123,6 +125,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
+                if category == "工具箱" && ui.button("Office 快速修复 · Rust").clicked() { self.pending = Some(Job::RepairOffice); }
                 if category == "TSforge" { ui.label("Windows、ESU、Office、Host、APPX、组合与重置入口均使用 Rust，包含相应旧版存储后端；Office 客户端仍要求 Win8+。GUI 最低系统要求不变，原生激活待实机验收。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
@@ -375,6 +378,10 @@ impl MasApp {
                                     "KMS38 是历史实现，新系统可能不支持。",
                                 );
                             }
+                        }
+                        Job::RepairOffice => {
+                            ui.label("Office 快速修复");
+                            ui.label("请先保存文档并关闭 Office。将启动本机 MSI/C2R 修复程序；如弹出选项，请选择快速修复。Office 2010 C2R 与 UWP 跳过。修复程序退出后仍需打开 Office 检查结果。");
                         }
                         Job::RestoreBackup(path) => {
                             ui.label("恢复本机 TSforge 备份");
