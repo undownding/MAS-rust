@@ -44,7 +44,7 @@ pub fn activate(
             .into(),
         ));
     }
-    if context.build < 9600 {
+    if scope == Scope::OfficeHost && context.build < 9600 {
         return Ok(None);
     }
     let method = match option {

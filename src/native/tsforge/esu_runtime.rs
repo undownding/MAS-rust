@@ -1,4 +1,4 @@
-//! Modern ESU orchestration with connectivity gating and SPP reevaluation.
+//! Versioned ESU orchestration with connectivity gating and SPP reevaluation.
 #![allow(dead_code)]
 use super::{
     activation_flow::{self, Method},
@@ -115,8 +115,7 @@ fn system_esu_tool(file: &str, args: &[&str], report: &dyn Fn(&str)) -> Result<(
     }
 }
 
-/// Internal until the GUI scope route is enabled.
-/// Old stores return None before any activation; errors do not request fallback.
+/// Vista keeps explicit compatibility before mutations; native errors never request fallback.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
     activate_inner(option, false, report)
 }
@@ -138,16 +137,12 @@ fn activate_inner(
         return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
     }
     let context = Context::read(report)?;
-    if context.build < 9600 {
+    if super::crypto::Version::detect(context.build).map_err(|e| e.to_string())?
+        == super::crypto::Version::Vista
+    {
         return Ok(None);
     }
-    let method = match option {
-        0 if context.build >= 26100 => Method::StaticCid,
-        0 | 2 => Method::ZeroCid,
-        1 => Method::StaticCid,
-        3 => return Err("Windows ESU 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
-        _ => return Err("未知 TSforge 方法".into()),
-    };
+    let method = esu::method(option, context.build)?;
     let method = if combined {
         method
     } else {

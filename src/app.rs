@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows 单项普通版已接入旧版存储后端；Office / ESU / Host / 组合仍以 build 9600+ 为原生范围。旧版评估版仍兼容，GUI 最低系统要求不变。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows 单项含旧版评估分支、Win7+ ESU、Win8/8.1 APPX 已接入 Rust；Vista ESU、旧版 Office / Host / 组合仍兼容。GUI 最低系统要求不变，原生激活待实机验收。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -296,7 +296,7 @@ impl MasApp {
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("HWID / Ohook / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；TSforge 现代 Windows、Office、ESU、KMS Host 和重置已接入 Rust；组合入口已接入 Rust；旧存储与高级工具仍兼容，修复分支继续迁移。");
+                        ui.label("HWID / Ohook / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；TSforge Windows、Win7+ ESU、APPX 和重置已接入 Rust；Office、Host、组合的原生范围见 README；旧版剩余范围及修复/高级工具继续迁移。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");

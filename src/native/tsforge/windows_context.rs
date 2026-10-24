@@ -279,7 +279,6 @@ impl Context {
 pub enum Plan {
     AlreadyPermanent,
     Evaluation,
-    Legacy,
     LegacyNative { method: Method },
     Activate { sku: Uuid, method: Method },
 }
@@ -288,11 +287,8 @@ pub enum Plan {
 pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
     let method = Method::windows(option, context.build)?;
     if context.edition.to_ascii_lowercase().contains("eval") {
-        return Ok(if context.build < 9600 {
-            Plan::Legacy
-        } else {
-            Plan::Evaluation
-        });
+        super::crypto::Version::detect(context.build).map_err(|e| e.to_string())?;
+        return Ok(Plan::Evaluation);
     }
     if activation_flow::skip_permanent(
         context.build,
@@ -315,8 +311,8 @@ pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
     Ok(Plan::Activate { sku, method })
 }
 
-/// Called under engine's OperationGuard. None explicitly requests legacy/eval
-/// compatibility; native errors never trigger a second, compatibility attempt.
+/// Called under engine's OperationGuard; native errors never trigger a second
+/// compatibility attempt.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
     activate_inner(option, false, report)
 }
@@ -352,10 +348,6 @@ fn activate_inner(
         Plan::Evaluation => super::evaluation_runtime::activate(&context, report).map(Some),
         Plan::LegacyNative { method } => {
             super::legacy_runtime::activate(&context, method, option == 0, report).map(Some)
-        }
-        Plan::Legacy => {
-            report("旧版 Windows 评估分支尚未接入原生激活，使用兼容引擎。");
-            Ok(None)
         }
         Plan::AlreadyPermanent => Ok(Some(
             if combined {
@@ -478,7 +470,7 @@ mod tests {
         context.build = 9600;
         assert!(matches!(plan(&context, 0).unwrap(), Plan::Evaluation));
         context.build = 9200;
-        assert!(matches!(plan(&context, 0).unwrap(), Plan::Legacy));
+        assert!(matches!(plan(&context, 0).unwrap(), Plan::Evaluation));
         context.build = 26100;
         context.edition = "Enterprise".into();
         assert!(matches!(plan(&context, 0).unwrap(), Plan::AlreadyPermanent));

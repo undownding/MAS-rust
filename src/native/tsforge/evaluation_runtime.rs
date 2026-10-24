@@ -1,4 +1,4 @@
-//! Native modern Windows evaluation activation; never invokes a script engine.
+//! Native versioned Windows evaluation activation; never invokes a script engine.
 #![allow(dead_code)]
 use super::{
     evaluation::{self, Backend, Product},
@@ -64,7 +64,10 @@ impl Backend for Native<'_> {
     }
 }
 pub fn activate(context: &Context, report: &dyn Fn(&str)) -> Result<String, String> {
-    super::runtime::preflight()?;
+    let layout = super::runtime::storage_preflight()?;
+    if layout.version != super::crypto::Version::detect(context.build).map_err(|e| e.to_string())? {
+        return Err("评估版上下文与本机存储版本不符，未执行重置。".into());
+    }
     if !context.edition.to_ascii_lowercase().contains("eval") {
         return Err("当前 Windows 不是评估版，未执行评估重置".into());
     }

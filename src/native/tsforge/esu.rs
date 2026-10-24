@@ -2,6 +2,20 @@
 #![cfg_attr(not(test), allow(dead_code))]
 use std::collections::HashSet;
 use uuid::Uuid;
+pub fn method(option: usize, build: u32) -> Result<super::activation_flow::Method, String> {
+    use super::activation_flow::Method;
+    let method = match option {
+        0 if build >= 26100 => Method::StaticCid,
+        0 | 2 => Method::ZeroCid,
+        1 => Method::StaticCid,
+        3 => return Err("Windows ESU 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
+        _ => return Err("未知 TSforge 方法".into()),
+    };
+    if method == Method::StaticCid && build < 9200 {
+        return Err("StaticCID 需要 Windows 8 或更高版本，未执行 ESU 修改。".into());
+    }
+    Ok(method)
+}
 const TABLE: &str = include_str!("../../../vendor/mas/native/tsforge-esu.tsv");
 const BASE: &str = "Education-EducationN-Enterprise-EnterpriseN-Professional-ProfessionalEducation-ProfessionalEducationN-ProfessionalN-ProfessionalWorkstation-ProfessionalWorkstationN";
 #[derive(Debug, Clone)]
@@ -152,6 +166,19 @@ pub fn select(system: &System<'_>, installed: &HashSet<Uuid>) -> Selection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_esu_methods_reject_static_before_side_effects_and_keep_auto_policy() {
+        use super::super::activation_flow::Method;
+        for build in [7600, 7601, 7602] {
+            assert_eq!(method(0, build).unwrap(), Method::ZeroCid);
+            assert!(method(1, build).is_err());
+            assert!(method(3, build).is_err());
+        }
+        assert_eq!(method(1, 9200).unwrap(), Method::StaticCid);
+        assert_eq!(method(0, 26100).unwrap(), Method::StaticCid);
+        assert_eq!(method(2, 26100).unwrap(), Method::ZeroCid);
+        assert!(method(4, 26100).is_err());
+    }
     #[test]
     fn batch_attempts_all_products_and_only_postprocesses_complete_success() {
         let products = vec![
