@@ -347,7 +347,8 @@ fn activate_inner(
     match plan(&context, option)? {
         Plan::Evaluation => super::evaluation_runtime::activate(&context, report).map(Some),
         Plan::LegacyNative { method } => {
-            super::legacy_runtime::activate(&context, method, option == 0, report).map(Some)
+            super::legacy_runtime::activate(&context, method, option == 0, combined, report)
+                .map(Some)
         }
         Plan::AlreadyPermanent => Ok(Some(
             if combined {

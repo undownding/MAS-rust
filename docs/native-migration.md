@@ -675,3 +675,9 @@ Office KMS Host 单项不再将 build 9600 以下转交兼容脚本。已有目�
 方法检查移入可测试的辅助许可策略，在联网和产品处理前拒绝未知存储构建、Win7 StaticCID、KMS4k 和未知选项；Auto 保持 build 26100+ StaticCID、较早版本 ZeroCID。测试覆盖 Win7/Win8/现代构建、方法限制、未知构建与 APPX 范围。198 项 Linux 测试及双目标 Clippy 通过；dev.12/13 Windows CI 40128055731/40128317439 已成功，dev.14 CI 40128735095 仍在运行。
 
 同步 README 表格中的 Vista ESU 旧说明，并更新界面、截图和本地构建。没有执行实际主机许可安装或激活，GUI 最低系统要求不变；此分派仍待旧版实机验收。
+
+### Windows 8 Office 客户端与组合原生分派（v0.6.0-dev.16）
+
+Office/Project/Visio 单项移除 Windows 8 的兼容分派，使用版本化存储预检，复用原生 C2R/MSI 许可准备、冲突密钥/缓存清理、密钥安装与激活；UWP 发现仍只在其支持的系统执行。方法入口先拒绝 Windows 8 以下及未知旧构建，再进行联网和许可操作。扩展已有方法测试，覆盖 build 9200 的全部方法及未知旧构建拒绝。
+
+Windows+ESU+Office 组合也接入 Windows 8 后端。旧版 Windows 子流程新增组合上下文，使用已解析的方法并跳过自身 KMS 清理与重评估，由组合统一执行，避免重复处理。Vista/Win7 组合及旧版 Windows KMS Host 仍兼容。198 项 Linux 测试和双目标 Clippy 通过；dev.14/15 Windows CI 40128735095/40128891764 仍在运行。未执行真实 Office 安装、激活或组合修改，旧版实机验收仍未完成，GUI 最低系统要求不变。

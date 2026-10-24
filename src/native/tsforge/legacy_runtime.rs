@@ -13,6 +13,7 @@ pub fn activate(
     context: &Context,
     method: Method,
     auto: bool,
+    combined: bool,
     report: &dyn Fn(&str),
 ) -> Result<String, String> {
     let layout = super::runtime::storage_preflight()?;
@@ -23,8 +24,11 @@ pub fn activate(
     {
         return Err("旧版普通 Windows 分派与本机版本不符，未执行安装。".into());
     }
-    let method =
-        super::connectivity::resolve(method, auto, || super::connectivity::connected(report))?;
+    let method = if combined {
+        method
+    } else {
+        super::connectivity::resolve(method, auto, || super::connectivity::connected(report))?
+    };
     let route = legacy_windows::key_route(expected, method)?;
     let result = match route {
         KeyRoute::Fixed(catalog_method) => {
@@ -42,7 +46,7 @@ pub fn activate(
                 context.edition, product.id
             ));
             (|| {
-                if method == Method::Kms4k {
+                if !combined && method == Method::Kms4k {
                     super::kms_cleanup::clear(context.build, report)?;
                 }
                 let installed = legacy_key_runtime::install(
@@ -79,10 +83,14 @@ pub fn activate(
             let mut backend = activation_flow::Native {
                 required_channel: None,
                 report,
-                cleanup_build: (method == Method::Kms4k).then_some(context.build),
+                cleanup_build: (!combined && method == Method::Kms4k).then_some(context.build),
             };
             activation_flow::run(&mut backend, sku, method)
         }
     };
-    super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
+    if combined {
+        result
+    } else {
+        super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
+    }
 }

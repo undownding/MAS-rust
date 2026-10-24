@@ -3,6 +3,10 @@
 use super::activation_flow::Method;
 use uuid::Uuid;
 pub fn method(option: usize, build: u32) -> Result<Method, String> {
+    if build < 9200 {
+        return Err("TSforge Office 需要 Windows 8 或更高版本".into());
+    }
+    super::crypto::Version::detect(build).map_err(|e| e.to_string())?;
     match option {
         0 if build >= 26100 => Ok(Method::StaticCid),
         0 | 2 => Ok(Method::ZeroCid),
@@ -74,19 +78,13 @@ fn activate_inner(
         return Err("请以管理员身份运行".into());
     }
     let context = Context::read(report)?;
-    if context.build < 9200 {
-        return Err("TSforge Office 需要 Windows 8 或更高版本".into());
-    }
-    if context.build < 9600 {
-        return Ok(None);
-    }
-    runtime::preflight()?;
+    // Validate support before license imports or configuration cleanup.
+    let requested = method(option, context.build)?;
+    runtime::storage_preflight()?;
     let selected = if combined {
-        method(option, context.build)?
+        requested
     } else {
-        connectivity::resolve(method(option, context.build)?, option == 0, || {
-            connectivity::connected(report)
-        })?
+        connectivity::resolve(requested, option == 0, || connectivity::connected(report))?
     };
     let prepared = office_runtime::prepare(context.build, selected, project_visio_only, report)?;
     let result = batch(
@@ -129,10 +127,16 @@ mod tests {
     fn office_auto_differs_from_windows_and_explicit_options_are_stable() {
         assert_eq!(method(0, 26099).unwrap(), Method::ZeroCid);
         assert_eq!(method(0, 26100).unwrap(), Method::StaticCid);
-        for build in [9600, 26100] {
+        for build in [9200, 9600, 26100] {
             assert_eq!(method(1, build).unwrap(), Method::StaticCid);
             assert_eq!(method(2, build).unwrap(), Method::ZeroCid);
             assert_eq!(method(3, build).unwrap(), Method::Kms4k);
+        }
+        assert_eq!(method(0, 9200).unwrap(), Method::ZeroCid);
+        for build in [6002, 7601, 9199, 9201, 9599] {
+            for option in 0..=3 {
+                assert!(method(option, build).is_err());
+            }
         }
         assert!(method(4, 26100).is_err());
     }

@@ -68,10 +68,10 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
     }
     let context = windows_context::Context::read(report)?;
     // Decide whole-request compatibility before ANY component can mutate state.
-    if context.build < 9600 {
+    if context.build < 9200 {
         return Ok(None);
     }
-    runtime::preflight()?;
+    runtime::storage_preflight()?;
     let method = connectivity::resolve(
         office_client::method(option, context.build)?,
         option == 0,

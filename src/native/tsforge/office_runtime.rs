@@ -1,5 +1,4 @@
-//! C2R/MSI/UWP adapters for Office client license preparation. The GUI still uses
-//! compatibility activation until final cleanup and activation are connected.
+//! C2R/MSI/UWP adapters for native Office client license preparation.
 #![allow(dead_code)]
 use super::{
     activation_flow::Method,
