@@ -1,8 +1,12 @@
 use super::{
+    crypto::Version,
+    paired_store,
     registry_backup::{Backup, Target},
     registry_targets,
     reset::{self, Step},
-    service, sl, token,
+    service, sl,
+    storage_layout::{self, Physical},
+    token,
     transaction::{self, Transaction},
 };
 use crate::native::{
@@ -55,7 +59,7 @@ pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
-pub(super) fn preflight() -> Result<PathBuf, String> {
+fn storage_preflight() -> Result<Physical, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }
@@ -74,21 +78,44 @@ pub(super) fn preflight() -> Result<PathBuf, String> {
         .parse()
         .map_err(|_| "Windows 构建号无效")?;
     let version = super::crypto::Version::detect(build).map_err(|e| e.to_string())?;
-    if version != super::crypto::Version::Modern {
-        return Err("原生 TSforge 存储操作尚未接入 Vista/Windows 7/8 的存储与服务布局。".into());
-    }
     sl::ensure_refresh_available().map_err(|error| error.to_string())?;
-    store_path("data.dat")
+    let configured = if version.paired() {
+        None
+    } else {
+        configured_store()?
+    };
+    storage_layout::physical(build, &platform::system_file("")?, configured.as_deref())
+}
+
+/// Activation backends still require the modern single-file layout.
+pub(super) fn preflight() -> Result<PathBuf, String> {
+    let layout = storage_preflight()?;
+    if layout.version != Version::Modern {
+        return Err("原生 TSforge 激活尚未接入旧版存储；重置和恢复使用独立版本化路径。".into());
+    }
+    Ok(layout.paths[0].clone())
 }
 
 pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
-    let path = preflight()?;
+    let layout = storage_preflight()?;
+    let path = &layout.paths[0];
     report(&format!(
         "原生 Rust TSforge 重置：{}；每阶段先保存备份，不调用 PowerShell。",
         path.display()
     ));
+    if layout.missing_secondary {
+        report("旧版副本不存在；事务会记录其缺失状态，并在提交时创建副本。");
+    }
+    let total = if layout.version == Version::Vista {
+        1
+    } else {
+        3
+    };
     let mut completed = 0;
     let result: Result<(), String> = (|| {
+        if layout.version == Version::Vista {
+            sl::refresh_license_status().map_err(|error| error.to_string())?;
+        }
         for (step, label, refresh) in [
             (Step::Tamper, "清理存储标记", true),
             (
@@ -98,11 +125,34 @@ pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
             ),
             (Step::KeyLock, "清理密钥变更锁", false),
         ] {
+            if layout.version == Version::Vista && !matches!(step, Step::RearmAndGrace) {
+                continue;
+            }
             report(label);
-            service::stopped("sppsvc", || {
+            service::stopped(layout.service, || {
+                if layout.version.paired() {
+                    let mut changed = 0;
+                    let transaction = paired_store::edit(path, &layout.paths[1], |original| {
+                        let (bytes, count) =
+                            reset::transform_version(original, step, layout.version)?;
+                        changed = count;
+                        Ok(bytes)
+                    })
+                    .map_err(|error| error.to_string())?;
+                    report(&format!(
+                        "阶段备份：{}",
+                        transaction.backup_path().display()
+                    ));
+                    // A zero record count can still require creating/synchronizing the mirror.
+                    transaction.commit().map_err(|error| error.to_string())?;
+                    report(&format!("已修改 {changed} 条记录并同步主副文件。"));
+                    completed += 1;
+                    return Ok(());
+                }
                 let mut changed = 0;
                 let transaction = Transaction::edit(vec![path.clone()], |originals| {
-                    let (encrypted, count) = reset::transform(originals[0], step)?;
+                    let (encrypted, count) =
+                        reset::transform_version(originals[0], step, layout.version)?;
                     changed = count;
                     Ok(vec![encrypted])
                 })
@@ -121,7 +171,7 @@ pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
                 completed += 1;
                 Ok(())
             })?;
-            if refresh {
+            if refresh && layout.version != Version::Vista {
                 sl::refresh_license_status().map_err(|error| error.to_string())?;
             }
         }
@@ -133,7 +183,7 @@ pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
                 .into(),
         ),
         Err(error) => Err(format!(
-            "TSforge 重置失败（已完成 {completed}/3 个存储阶段）：{error}。此前完成的阶段仍有效，备份路径见日志。"
+            "TSforge 重置失败（已完成 {completed}/{total} 个存储阶段）：{error}。此前完成的阶段仍有效，备份路径见日志。"
         )),
     }
 }
@@ -143,7 +193,8 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
     if !backup.is_absolute() || !backup.is_dir() {
         return Err("请选择本机备份目录的绝对路径，目录中须有 manifest.json。".into());
     }
-    let path = preflight()?;
+    let layout = storage_preflight()?;
+    let path = &layout.paths[0];
     report(&format!(
         "原生 Rust TSforge 恢复：{} → {}",
         backup.display(),
@@ -151,12 +202,27 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
     ));
     let mut restored = false;
     let mut cache = None;
-    let result = service::stopped("sppsvc", || {
-        let undo = if backup
+    let result = service::stopped(layout.service, || {
+        let paired = backup
+            .join("paired-store.json")
+            .try_exists()
+            .map_err(|e| e.to_string())?;
+        if paired != layout.version.paired() {
+            return Err("备份类型与当前系统的主副文件布局不符。".into());
+        }
+        let undo = if paired {
+            report("正在恢复旧版主副文件及副本原始存在状态。");
+            paired_store::restore(backup, path, &layout.paths[1], |bytes| {
+                reset::decode(bytes, layout.version).map(|_| ())
+            })
+        } else if backup
             .join("external-state-required")
             .try_exists()
             .map_err(|e| e.to_string())?
         {
+            if layout.version != Version::Modern {
+                return Err("产品注册表联合备份仅支持现代存储。".into());
+            }
             let saved_registry = Backup::load(backup).map_err(|e| e.to_string())?;
             let specs =
                 registry_targets::select(&saved_registry.ids()).map_err(|e| e.to_string())?;
@@ -197,7 +263,7 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
             report("正在校验并恢复 data.dat、tokens.dat 与已备份的产品注册表值。");
             transaction::restore_participating(
                 backup,
-                &[path, tokens],
+                &[path.clone(), tokens],
                 |index, bytes| {
                     if index == 0 {
                         reset::decode_modern(bytes).map(|_| ())
@@ -208,8 +274,8 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
                 &mut registry,
             )
         } else {
-            transaction::restore_validated(backup, &[path], |_, bytes| {
-                reset::decode_modern(bytes).map(|_| ())
+            transaction::restore_validated(backup, std::slice::from_ref(path), |_, bytes| {
+                reset::decode(bytes, layout.version).map(|_| ())
             })
         }
         .map_err(|error| error.to_string())?;

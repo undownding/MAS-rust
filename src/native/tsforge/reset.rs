@@ -98,6 +98,7 @@ pub fn decode(original: &[u8], version: super::crypto::Version) -> std::io::Resu
     };
     Ok((Store::decode(&plaintext, version.format())?, production))
 }
+#[cfg(test)]
 pub fn transform(original: &[u8], step: Step) -> std::io::Result<(Vec<u8>, usize)> {
     transform_version(original, step, super::crypto::Version::Modern)
 }
@@ -338,6 +339,73 @@ mod tests {
         assert_eq!(a, std::fs::read(&paths[1]).unwrap());
         assert_eq!(decode(&a, Version::Win7).unwrap().0.blocks[0].data, [0; 8]);
         assert_eq!(std::fs::read(backup.join("1.original")).unwrap(), secondary);
+    }
+    #[test]
+    fn paired_reset_missing_mirror_zero_changes_still_creates_and_restore_removes_it() {
+        use super::super::{
+            crypto::{self, Version},
+            paired_store,
+        };
+        for version in [Version::Vista, Version::Win7] {
+            let dir = tempfile::tempdir().unwrap();
+            let primary = dir.path().join("primary");
+            let mirror = dir.path().join("mirror");
+            let store = Store {
+                header: [0; 8],
+                format: version.format(),
+                groups: vec![],
+                blocks: vec![],
+            };
+            let original = crypto::encrypt(&store.encode().unwrap(), true, version).unwrap();
+            std::fs::write(&primary, &original).unwrap();
+            let backup = paired_store::edit(&primary, &mirror, |bytes| {
+                let (output, count) = transform_version(bytes, Step::RearmAndGrace, version)?;
+                assert_eq!(count, 0);
+                Ok(output)
+            })
+            .unwrap()
+            .commit()
+            .unwrap();
+            assert_eq!(std::fs::read(&mirror).unwrap(), original);
+            paired_store::restore(&backup, &primary, &mirror, |bytes| {
+                decode(bytes, version).map(|_| ())
+            })
+            .unwrap();
+            assert!(!mirror.exists());
+            assert_eq!(std::fs::read(&primary).unwrap(), original);
+        }
+    }
+    #[test]
+    fn paired_reset_recovery_rejects_wrong_encrypted_version_before_live_writes() {
+        use super::super::{
+            crypto::{self, Version},
+            paired_store,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let primary = dir.path().join("primary");
+        let mirror = dir.path().join("mirror");
+        let store = Store {
+            header: [0; 8],
+            format: Format::Win7,
+            groups: vec![],
+            blocks: vec![],
+        };
+        let original = crypto::encrypt(&store.encode().unwrap(), true, Version::Win7).unwrap();
+        std::fs::write(&primary, &original).unwrap();
+        let backup = paired_store::edit(&primary, &mirror, |bytes| Ok(bytes.to_vec()))
+            .unwrap()
+            .commit()
+            .unwrap();
+        assert!(
+            paired_store::restore(&backup, &primary, &mirror, |bytes| decode(
+                bytes,
+                Version::Vista
+            )
+            .map(|_| ()))
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&primary).unwrap(), original);
+        assert_eq!(std::fs::read(&mirror).unwrap(), original);
     }
     #[test]
     fn legacy_reset_uses_version_specific_identifiers() {
