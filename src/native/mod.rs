@@ -53,3 +53,6 @@ pub mod system_repair;
 
 #[cfg(any(windows, test))]
 mod cabinet;
+
+#[cfg(any(windows, test))]
+pub mod wmi_repair;

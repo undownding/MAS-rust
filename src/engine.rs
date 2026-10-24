@@ -272,6 +272,18 @@ pub fn repair_system(
     }
 }
 
+pub fn repair_wmi(fix: bool, report: &dyn Fn(&str)) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        crate::native::wmi_repair::run(fix, report)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (fix, report);
+        Err("WMI 检查需要 Windows".into())
+    }
+}
+
 pub fn repair_office(report: &dyn Fn(&str)) -> Result<String, String> {
     #[cfg(windows)]
     {

@@ -721,3 +721,11 @@ README、界面截图和本地包更新至 dev.19。未实际运行 Office 修�
 DISM/SFC 的 before/after 日志快照成功后立即生成相邻 CAB；保留原始日志，压缩失败报告具体原因。测试验证空文件、1 字节、32 KiB 整块/跨块、多块内容、禁止覆盖和路径名称拒绝。205 项 Linux 测试及双目标 Clippy 通过；独立 libarchive 对五个生成样本解压并逐字节匹配，复验脚本为 tools/verify_cabinet.py。Windows 测试使用系统 expand.exe 解压同样样本，不执行系统修复。
 
 dev.17/18 Windows CI 40129261202/40129460472 已成功，dev.19/20 CI 40129700105/40129933060 仍在运行。README 与本地包更新至 dev.21，界面未变，保留现有实际截图。没有执行真实系统修复；其他修复与高级功能仍在迁移。
+
+### WMI 检查与基础修复（v0.6.0-dev.22）
+
+工具箱新增独立的 WMI 检查与基础修复按钮。Rust COM 查询 Win32_ComputerSystem.CreationClassName 与 SoftwareLicensingService.Version，并从系统目录调用 winmgmt /verifyrepository。许可服务查询按上游 HRESULT 范围区分 WMI 错误与其他错误，后者保留说明，不直接推断仓库损坏。仓库命令保留退出码，每 15 秒报告运行状态，不调用 PowerShell。
+
+基础修复先通过系统 Servicing/Packages 的 Server Edition 标记排除 Windows Server，再检查；正常则不修改，异常执行一次 /salvagerepository 并重新进行全部检查。保留 salvage 错误和复查结果，不仅依赖命令退出码判断。该阶段不强制停止依赖服务，不自动删除仓库、重启或进入重建；完整仓库重建、DLL/MOF/MFL 注册等分支仍待迁移。命令语义参考 [Microsoft winmgmt 文档](https://learn.microsoft.com/en-us/windows/win32/wmisdk/winmgmt)。
+
+207 项 Linux 测试覆盖 HRESULT 范围、Server/正常状态跳过、异常时单次 salvage、复查决定结果。双目标 Clippy 通过；未在本机或 CI 执行真实 salvage/仓库重建。README、实际工具箱截图和本地包更新至 dev.22。此前 dev.19/20/21 Windows CI 40129700105/40129933060/40130160967 仍在运行。
