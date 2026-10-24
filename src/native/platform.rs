@@ -88,6 +88,38 @@ impl Service {
     }
 }
 
+/// Read-only existence check; access failures are not mistaken for absence.
+pub fn service_exists(name: &str) -> Result<bool, String> {
+    if name.is_empty() || name.contains('\0') {
+        return Err("无效服务名称".into());
+    }
+    let manager = unsafe { OpenSCManagerW(ptr::null(), ptr::null(), SC_MANAGER_CONNECT) };
+    if manager.is_null() {
+        return Err(win_error("打开服务管理器"));
+    }
+    let manager = Service(manager);
+    let handle = unsafe { OpenServiceW(manager.0, wide(name).as_ptr(), SERVICE_QUERY_STATUS) };
+    if handle.is_null() {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() == Some(1060) {
+            return Ok(false);
+        }
+        return Err(format!("查询服务 {name}：{error}"));
+    }
+    let _service = Service(handle);
+    Ok(true)
+}
+
+#[cfg(test)]
+mod service_discovery_tests {
+    #[test]
+    fn reads_existing_and_absent_services_without_start_or_stop() {
+        assert!(super::service_exists("RpcSs").unwrap());
+        assert!(!super::service_exists("MAS-Rust-test-7ed43ecf-NotInstalled").unwrap());
+        assert!(super::service_exists("invalid\0name").is_err());
+    }
+}
+
 pub fn service(name: &str, start: bool) -> Result<(), String> {
     let handle = Service::open(name)?;
     let mut state = handle.state()?;

@@ -438,3 +438,14 @@ Office 准备适配器新增 UWP 分支，使用包目录中的 Office16/pkeycon
 WinRT 使用空 SID 查询当前用户，逐项检查迭代 HRESULT；每次成功初始化（包括 S_FALSE）均匹配清理，并保留 WMI 已有的线程模型。接口语义参考 [FindPackagesForUser](https://learn.microsoft.com/en-us/uwp/api/windows.management.deployment.packagemanager.findpackagesforuser) 和 [RoInitialize](https://learn.microsoft.com/windows/win32/api/roapi/nf-roapi-roinitialize)。增加 Windows SDK crate 的 ApplicationModel、Management_Deployment、Storage_Search 与 WinRT 特性，无新增 crate 版本。
 
 143 项本地测试和双目标 Clippy 通过；新增依赖归并、大小写、独立 Project/Visio 版本优先级、无依赖/预览文件回退测试。Windows 专用测试只枚举实际包，并在 WinRT 清理后检查已有 WMI 连接仍可查询；实际包 API 执行待本次 Windows CI。上一轮 Office 准备 CI 40122613303 仍在运行。Office GUI、截图和 dev.7 测试包入口未改变；服务检查、最终清理、激活调度仍在迁移。
+
+
+### Office 服务检查、清理与激活编排后端（进行中）
+
+C2R 在许可准备前直接查询 SCM：Office 16 要求 ClickToRunSvc，Office 15 允许 ClickToRunSvc 或 OfficeSvc；只读权限，服务缺失与权限/API 失败分开报告。新增 `office_finalization.rs`，连接已有用户许可缓存清理，仅在无准备错误、无 MSI 且有已准备 C2R/UWP 产品时卸载冲突 Office 密钥，Project/Visio 范围保留其他产品家族；卸载后重新查询验证。KMS4k 的 Office 16 C2R 准备成功后重建两个注册表视图中的 Office 专用 KMS 项，并回读验证。
+
+新增 `license_reinstall.rs`，对应 Insider tokens.dat 检测与 ReinstallLicenses：从系统 oem、licensing、spp/tokens 三个目录递归准备 XRM 文件，完整读取/解析后再导入，保留 XML 原文，限制深度、数量及总大小，拒绝重解析路径。使用既有 SPP 服务协调器执行导入，错误记录已导入数量；不会自动重跑整个导入或宣称已恢复先前许可。
+
+新增 `office_client.rs`，串起 Auto 方法/联网判定、现代存储预检、C2R/MSI/UWP 准备、KMS 配置清理、Office 最终清理、生成密钥和 SCID/ZeroCID/KMS4k 执行链，最后触发 SPP 重评估。无目标不清理；清理失败不继续安装密钥；产品激活失败继续其他产品并保留准备错误，最终只在全部成功时报告成功。旧存储仍明确返回兼容准备结果，原生失败不回退脚本。
+
+147 项本地测试与双目标 Clippy 通过。新增固定目录递归/损坏 XML、导入失败数量、Project/Visio 保留规则、Office Auto 边界和清理失败停止测试；Windows 专用测试仅查询服务和操作临时 HKCU 横幅配置，不清理真实 Office、不重新导入许可或执行激活。许可准备 CI 40122613303、UWP CI 40122867640 仍在运行。GUI 尚未切换，实际激活未验收；截图及 dev.7 测试包没有变化。

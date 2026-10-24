@@ -170,6 +170,7 @@ pub struct Prepared {
     pub has_msi: bool,
     pub has_c2r: bool,
     pub has_uwp: bool,
+    pub c2r16: bool,
     pub keep_shared: bool,
 }
 /// Pre-read all plans, then import independently. Consumers must retain errors
@@ -192,6 +193,7 @@ pub fn prepare(
         has_msi: installed.iter().any(|i| matches!(i, Installed::Msi(_))),
         has_c2r: installed.iter().any(|i| matches!(i, Installed::C2r(_))),
         has_uwp: installed.iter().any(|i| matches!(i, Installed::Uwp(_))),
+        c2r16: false,
         keep_shared: false,
     };
     let mut plans = Vec::new();
@@ -202,6 +204,16 @@ pub fn prepare(
             i.products().join(", ")
         ));
         let prepared = (|| {
+            if let Installed::C2r(c2r) = i {
+                let current = crate::native::platform::service_exists("ClickToRunSvc")?;
+                if !current
+                    && (c2r.version != 15 || !crate::native::platform::service_exists("OfficeSvc")?)
+                {
+                    return Err(
+                        "已发现 C2R 文件，但缺少 Click-to-Run 服务，请修复 Office 安装".into(),
+                    );
+                }
+            }
             let configs = configs(&i.config_path()?)?;
             Ok::<_, String>(office_preparation::prepare(
                 &office_preparation::Installation {
@@ -258,6 +270,7 @@ pub fn prepare(
         for product in plan.products {
             match office_preparation::apply(&product, &mut backend) {
                 Ok(()) => {
+                    result.c2r16 |= matches!(i, Installed::C2r(c) if c.version == 16);
                     if !result.ids.contains(&product.id) {
                         result.ids.push(product.id);
                     }
