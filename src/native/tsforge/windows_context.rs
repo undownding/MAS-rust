@@ -282,12 +282,16 @@ pub enum Plan {
     Legacy,
     Activate { sku: Uuid, method: Method },
 }
-/// Evaluation and legacy branches remain explicit, so a future dispatcher can
+/// Evaluation and legacy branches remain explicit, so the dispatcher can
 /// route them without incorrectly installing a generated key for an eval SKU.
 pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
     let method = Method::windows(option, context.build)?;
     if context.edition.to_ascii_lowercase().contains("eval") {
-        return Ok(Plan::Evaluation);
+        return Ok(if context.build < 9600 {
+            Plan::Legacy
+        } else {
+            Plan::Evaluation
+        });
     }
     if activation_flow::skip_permanent(
         context.build,
@@ -343,10 +347,7 @@ fn activate_inner(
         ));
     }
     match plan(&context, option)? {
-        Plan::Evaluation => {
-            report("评估版 Windows 的重置/联网激活仍使用兼容引擎。");
-            Ok(None)
-        }
+        Plan::Evaluation => super::evaluation_runtime::activate(&context, report).map(Some),
         Plan::Legacy => {
             report("此 Windows 存储版本尚未接入原生激活，使用兼容引擎。");
             Ok(None)
@@ -469,6 +470,11 @@ mod tests {
             permanently_activated: true,
         };
         assert!(matches!(plan(&context, 0).unwrap(), Plan::Evaluation));
+        context.build = 9600;
+        assert!(matches!(plan(&context, 0).unwrap(), Plan::Evaluation));
+        context.build = 9200;
+        assert!(matches!(plan(&context, 0).unwrap(), Plan::Legacy));
+        context.build = 26100;
         context.edition = "Enterprise".into();
         assert!(matches!(plan(&context, 0).unwrap(), Plan::AlreadyPermanent));
         context.permanently_activated = false;

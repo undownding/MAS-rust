@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows / Office / ESU / KMS Host：build 9600+ 使用 Rust；APPX 仅适用 8/8.1。组合入口同样使用 Rust；Windows 评估版与旧版存储仍兼容。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows / Office / ESU / KMS Host：build 9600+ 使用 Rust；APPX 仅适用 8/8.1。组合入口同样使用 Rust；评估版使用原生重置/联网激活，旧版存储仍兼容。原生激活待实机验收，重置不等于激活。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -351,7 +351,10 @@ impl MasApp {
                             }
                             if op.args == ["/Z-WindowsESUOffice"] {
                                 ui.label("按 Windows → ESU → Office 依次处理，共享激活方法。KMS4k 会跳过 ESU；各范围失败单独记录，已完成的修改不自动回滚。");
-                                ui.label("Office 处理会转换适用产品、清理订阅缓存和冲突密钥；可能需要重新登录 Office。旧存储或 Windows 评估版在开始修改前转入兼容引擎。");
+                                ui.label("Office 处理会转换适用产品、清理订阅缓存和冲突密钥；可能需要重新登录 Office。旧存储在开始修改前转入兼容引擎。");
+                            }
+                            if matches!(op.args, ["/Z-Windows"] | ["/Z-WindowsESUOffice"]) {
+                                ui.label("若 Windows 为评估版：将带备份重置 rearm/评估计时器，再安装评估密钥并请求联网激活；验证 90 或 180 天期限，不会转为永久许可。评估流程不使用 SCID/ZCID/KMS4k 替代联网激活。");
                             }
                             if op.args == ["/Z-Reset"] {
                                 ui.label("将重置许可存储中的 rearm 计数、宽限/评估计时器及相关标记。每个阶段保留备份；这不等于激活系统。当前原生路径仅处理现代存储布局（build 9600+）。");

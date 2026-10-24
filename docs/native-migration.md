@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/Office/Project/Visio/ESU/KMS Host/APPX 与组合的现代存储入口及重置已接入 Rust；旧存储/评估版仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/Office/Project/Visio/ESU/KMS Host/APPX 与组合的现代存储入口及重置已接入 Rust；旧存储仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的旧版存储 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -476,3 +476,12 @@ GUI 组合按钮、确认说明、README、真实预览截图和 Windows 本地�
 153 项本地测试和双目标 Clippy 通过，覆盖目录完整性/去重/本机 ID 交集、版本顺序、90/180 天边界、整数溢出、许可状态，以及每个失败阶段停止并保留备份错误。Windows 专用测试仅读取实际评估许可证，不重置计时器、不安装密钥或请求激活。Office 清理后端 CI 40123221959 与 UWP CI 40122867640 已成功；Office GUI CI 40123486597 与组合 CI 40123891475 仍在运行。
 
 此轮尚未切换 Windows 单项/组合中的评估版分支；当前 GUI、截图和 dev.9 测试包行为保持一致。后续将接入评估版确认说明和原生路由，旧存储仍须继续迁移。
+
+
+### 评估版 Windows 单项与组合 GUI 接入（v0.6.0-dev.10）
+
+现代 Windows 评估版直接调用 `evaluation_runtime`，不再启动兼容脚本。计划选择明确区分 build 9200 的旧存储与 build 9600+ 评估版，先判断评估分支，避免误用永久激活跳过或普通生成密钥流程。组合入口仅在旧存储时整体转兼容，评估版作为 Windows 范围独立执行联网激活，其他范围沿用组合方法；原生错误不会触发脚本重试。
+
+确认窗口明确说明评估计时器、备份、联网激活和 90/180 天期限，SCID/ZCID/KMS4k 不能替代评估分支的联网请求。README、范围说明、截图和 Windows 本地包同步至 dev.10。
+
+153 项本地测试及双目标 Clippy 通过；扩展 Windows 专用计划测试覆盖评估版在 9200/9600 边界和优先于永久许可跳过的行为。Office GUI CI 40123486597、清理后端 CI 40123221959 已成功；组合 CI 40123891475 和评估后端 CI 40124164663 仍在运行。实际计时器重置/评估激活仍未实机验收；旧存储和修复/高级工具继续迁移。

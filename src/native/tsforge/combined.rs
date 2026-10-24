@@ -68,7 +68,7 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
     }
     let context = windows_context::Context::read(report)?;
     // Decide whole-request compatibility before ANY component can mutate state.
-    if context.build < 9600 || context.edition.to_ascii_lowercase().contains("eval") {
+    if context.build < 9600 {
         return Ok(None);
     }
     runtime::preflight()?;
