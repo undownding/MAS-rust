@@ -34,7 +34,7 @@ fn expand(value: &str) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn store_path(filename: &str) -> Result<PathBuf, String> {
+pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
     if let Some(key) = Key::open(
         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SoftwareProtectionPlatform",
         KEY_WOW64_64KEY,
@@ -62,7 +62,7 @@ fn store_path(filename: &str) -> Result<PathBuf, String> {
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
-fn preflight() -> Result<PathBuf, String> {
+pub(super) fn preflight() -> Result<PathBuf, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }

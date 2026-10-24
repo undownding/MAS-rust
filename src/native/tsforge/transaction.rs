@@ -239,6 +239,16 @@ impl Transaction {
     pub fn backup_path(&self) -> &Path {
         &self.backup
     }
+    /// Persist both backups without modifying live state, then release file
+    /// handles so licensing APIs can run. Used before uninstalling old keys.
+    #[allow(dead_code)]
+    pub fn checkpoint(mut self, participant: &mut dyn Participant) -> io::Result<PathBuf> {
+        save(&self.backup.join("external-state-required"), b"1\n")?;
+        participant.prepare(&self.backup)?;
+        sync_directory(&self.backup)?;
+        self.record("checkpoint-no-live-writes")?;
+        Ok(self.backup)
+    }
     pub fn commit(self) -> Result<PathBuf, Failure> {
         self.commit_with(|_, _, _| Ok(()))
     }
@@ -568,6 +578,24 @@ mod tests {
         assert_eq!(fs::read(&paths[0]).unwrap(), b"");
         assert_eq!(fs::read(&paths[1]).unwrap(), vec![1; 19]);
         assert_eq!(fs::read(error.backup.join("0.original")).unwrap(), b"");
+    }
+    #[test]
+    fn checkpoint_prepares_both_backups_without_mutating_live_state() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState::default();
+        let backup = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .checkpoint(&mut extra)
+            .unwrap();
+        assert_original(&paths);
+        assert_eq!(extra.calls, ["prepare"]);
+        assert_eq!(extra.value, 0);
+        assert_eq!(fs::read(backup.join("extra.original")).unwrap(), [0; 4]);
+        assert!(
+            fs::read_to_string(backup.join("journal.txt"))
+                .unwrap()
+                .ends_with("checkpoint-no-live-writes\n")
+        );
     }
     #[test]
     fn participant_preparation_failure_changes_no_live_state() {

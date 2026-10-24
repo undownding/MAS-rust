@@ -36,7 +36,7 @@ pub struct RegistryValues<'a> {
 #[allow(dead_code)]
 impl<'a> RegistryValues<'a> {
     pub fn capture(edits: Vec<Edit<'a>>) -> io::Result<Self> {
-        if edits.is_empty() || edits.len() > 32 {
+        if edits.len() > 32 {
             return Err(invalid("invalid registry edit count"));
         }
         let mut ids = HashSet::new();
@@ -107,7 +107,7 @@ impl Backup {
             .get("values")
             .and_then(|v| v.as_array())
             .ok_or_else(|| invalid("invalid registry backup entries"))?;
-        if values.is_empty() || values.len() > 32 {
+        if values.len() > 32 {
             return Err(invalid("registry backup target count mismatch"));
         }
         let mut records = HashMap::new();
@@ -268,6 +268,20 @@ mod tests {
                 bytes: vec![1, 2, 3],
             }),
         }
+    }
+    #[test]
+    fn token_only_product_uses_empty_registry_checkpoint_and_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut empty = RegistryValues::capture(vec![]).unwrap();
+        empty.prepare(dir.path()).unwrap();
+        empty.commit().unwrap();
+        let saved = Backup::load(dir.path()).unwrap();
+        assert!(saved.ids().is_empty());
+        let mut restore = saved.capture(vec![]).unwrap();
+        let undo = tempfile::tempdir().unwrap();
+        restore.prepare(undo.path()).unwrap();
+        restore.commit().unwrap();
+        restore.rollback().unwrap();
     }
     #[test]
     fn compound_recovery_restores_both_resources_and_undo_captures_live_state() {

@@ -57,6 +57,9 @@ pub const SPECS: [Spec; 7] = [
     },
 ];
 pub fn select(ids: &[&str]) -> io::Result<Vec<&'static Spec>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
     let ids_set: HashSet<_> = ids.iter().copied().collect();
     if ids_set.len() != ids.len() || ids.iter().any(|id| !SPECS.iter().any(|s| s.id == *id)) {
         return Err(invalid("unknown or duplicate registry target ID"));
@@ -97,7 +100,7 @@ mod tests {
                 assert_eq!(specs[0].name, "ProductId");
             }
         }
-        assert!(select(&[]).is_err());
+        assert!(select(&[]).unwrap().is_empty());
         assert!(select(&[SPECS[0].id]).is_err());
         let mut ids: Vec<_> = SPECS[..3].iter().map(|s| s.id).collect();
         ids.push(SPECS[3].id);

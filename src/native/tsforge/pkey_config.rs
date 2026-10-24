@@ -102,7 +102,7 @@ impl Product {
         self.select(index, random_below(width)?)
     }
 }
-fn random_below(bound: u32) -> Result<u32> {
+pub(super) fn random_below(bound: u32) -> Result<u32> {
     if bound == 0 {
         return Err(invalid("no selectable key ranges"));
     }

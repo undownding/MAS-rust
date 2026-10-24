@@ -19,7 +19,7 @@ mod runtime;
 pub use runtime::{reset, restore};
 
 // Product-key installation/configuration integration is still in progress.
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod key_install;
 #[cfg_attr(not(test), allow(dead_code))]
 mod legacy_random;
@@ -34,3 +34,7 @@ mod registry_backup;
 mod registry_targets;
 
 mod generated_key;
+
+#[cfg(windows)]
+mod key_runtime;
+mod pid_context;

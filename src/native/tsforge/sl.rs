@@ -126,6 +126,16 @@ impl Value {
     }
 }
 
+fn id_list_result(status: i32, count: u32, output: Buffer<GUID>) -> Result<Vec<GUID>> {
+    // SLGetSLIDList documents VALUE_NOT_FOUND when no mapping exists. Other
+    // failures (access denied, unsupported query, etc.) must remain failures.
+    if status == SL_E_VALUE_NOT_FOUND {
+        return Ok(Vec::new());
+    }
+    check("SLGetSLIDList", status)?;
+    output.copy(count as usize)
+}
+
 pub struct Context {
     handle: *mut c_void,
     _thread: PhantomData<Rc<()>>,
@@ -161,10 +171,8 @@ impl Context {
     pub fn ids(&self, from: SLIDTYPE, id: &GUID, to: SLIDTYPE) -> Result<Vec<GUID>> {
         let mut count = 0;
         let mut output = Buffer(ptr::null_mut());
-        check("SLGetSLIDList", unsafe {
-            SLGetSLIDList(self.handle, from, id, to, &mut count, &mut output.0)
-        })?;
-        output.copy(count as usize)
+        let status = unsafe { SLGetSLIDList(self.handle, from, id, to, &mut count, &mut output.0) };
+        id_list_result(status, count, output)
     }
 
     pub fn statuses(&self, app: &GUID) -> Result<Vec<SL_LICENSING_STATUS>> {
@@ -427,6 +435,31 @@ pub fn refresh_license_status() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn missing_id_mapping_is_empty_but_other_errors_remain_errors() {
+        assert!(
+            super::id_list_result(
+                super::SL_E_VALUE_NOT_FOUND,
+                0,
+                super::Buffer(std::ptr::null_mut())
+            )
+            .unwrap()
+            .is_empty()
+        );
+        assert!(
+            super::id_list_result(0x80070005u32 as i32, 0, super::Buffer(std::ptr::null_mut()))
+                .is_err()
+        );
+        assert!(
+            super::id_list_result(
+                super::SL_E_NOT_SUPPORTED,
+                0,
+                super::Buffer(std::ptr::null_mut())
+            )
+            .is_err()
+        );
+    }
+
     use super::*;
     use windows_sys::Win32::System::Memory::{LMEM_FIXED, LMEM_ZEROINIT, LocalAlloc};
 
