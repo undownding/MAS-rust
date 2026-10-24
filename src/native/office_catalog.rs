@@ -1,6 +1,7 @@
 //! Office license selection from the pinned upstream ksdata table.
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -142,8 +143,13 @@ pub fn license_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 pub fn missing_files(dir: &Path, license: &License) -> Result<Vec<(PathBuf, String)>, String> {
+    missing_product_files(dir, license.product)
+}
+
+/// Product-name form also supports dynamically selected TSforge configurations.
+pub fn missing_product_files(dir: &Path, product: &str) -> Result<Vec<(PathBuf, String)>, String> {
     let files = license_files(dir)?;
-    let prefix = license_prefix(license.product).to_ascii_lowercase();
+    let prefix = license_prefix(product).to_ascii_lowercase();
     let is_product = |p: &PathBuf| {
         p.file_name()
             .unwrap()
@@ -152,11 +158,7 @@ pub fn missing_files(dir: &Path, license: &License) -> Result<Vec<(PathBuf, Stri
             .starts_with(&prefix)
     };
     if !files.iter().any(is_product) {
-        return Err(format!(
-            "缺少 {} 的许可文件：{}",
-            license.product,
-            dir.display()
-        ));
+        return Err(format!("缺少 {} 的许可文件：{}", product, dir.display()));
     }
     let pkey = files
         .iter()
@@ -178,15 +180,33 @@ pub fn missing_files(dir: &Path, license: &License) -> Result<Vec<(PathBuf, Stri
         .collect();
     selected.extend(files.iter().filter(|p| is_product(p)));
     selected.push(pkey);
-    // Decode every file before the first mutation; UTF-16 BOMs occur in Office media.
+    if selected.len() > 256 {
+        return Err("Office 许可文件数量超出限制".into());
+    }
+    let mut remaining = 64 * 1024 * 1024u64;
+    // Decode and parse every file before mutation; preserve signed XML text.
     selected
         .into_iter()
         .map(|p| {
-            let bytes = fs::read(p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let mut bytes = Vec::new();
+            fs::File::open(p)
+                .map_err(|e| format!("{}: {e}", p.display()))?
+                .take(remaining + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| format!("{}: {e}", p.display()))?;
+            remaining = remaining
+                .checked_sub(bytes.len() as u64)
+                .ok_or("Office 许可文件总大小超出限制")?;
             let xml = decode_license(&bytes)?;
-            if !xml.trim_start().starts_with('<') {
-                return Err(format!("许可文件不是 XML：{}", p.display()));
-            }
+            roxmltree::Document::parse_with_options(
+                &xml,
+                roxmltree::ParsingOptions {
+                    allow_dtd: false,
+                    nodes_limit: 1_000_000,
+                    ..Default::default()
+                },
+            )
+            .map_err(|e| format!("许可 XML 无效 {}: {e}", p.display()))?;
             Ok((p.clone(), xml))
         })
         .collect()
@@ -195,6 +215,36 @@ pub fn missing_files(dir: &Path, license: &License) -> Result<Vec<(PathBuf, Stri
 #[cfg(test)]
 mod file_tests {
     use super::*;
+    #[test]
+    fn dynamic_product_import_preserves_utf16_text_and_rejects_invalid_xml_and_large_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let product = dir.path().join("MondoR_test.xrm-ms");
+        let pkey = dir.path().join("pkeyconfig-office.xrm-ms");
+        let xml = "<licenseGroup>\n<!--许可-->\n</licenseGroup>";
+        let mut bytes = vec![0xff, 0xfe];
+        bytes.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
+        fs::write(&product, bytes).unwrap();
+        fs::write(&pkey, "<licenseGroup/>").unwrap();
+        let files = missing_product_files(dir.path(), "MondoRetail").unwrap();
+        assert_eq!(files[0].1, xml);
+        for invalid in ["<licenseGroup>", "<!DOCTYPE x [<!ENTITY y 'z'>]><x>&y;</x>"] {
+            fs::write(&pkey, invalid).unwrap();
+            assert!(missing_product_files(dir.path(), "MondoRetail").is_err());
+        }
+        fs::write(&pkey, "<licenseGroup/>").unwrap();
+        for index in 0..255 {
+            fs::write(
+                dir.path().join(format!("client-issuance-{index}.xrm-ms")),
+                "<licenseGroup/>",
+            )
+            .unwrap();
+        }
+        assert!(
+            missing_product_files(dir.path(), "MondoRetail")
+                .unwrap_err()
+                .contains("数量超出限制")
+        );
+    }
     #[test]
     fn import_plan_requires_product_and_pkey_and_orders_dependencies_first() {
         let dir = tempfile::tempdir().unwrap();

@@ -414,3 +414,16 @@ Office 激活 ID 按 OEM:NONSLP→Volume:MAK→Retail 或单独 Volume:GVLK 的�
 135 项本地测试及双平台 Clippy 通过，新增完整转换别名覆盖、O365/ARM/MSI/免费 Retail、Project/Visio、通道优先级与 XML 元数据到选择结果的测试。Windows KMS Host 后端 CI 40121163362 已成功，GUI CI 40121347942 与辅助入口 CI 40121694619 仍在运行。
 
 Office GUI 尚未切换；C2R/MSI/UWP 产品发现、许可导入和配置清理仍需连接。已确认 KMS4k 模式下的免费 Retail 产品需要在安装后先检查已许可状态，不能直接套用通用入口的 GVLK 安装前限制，后续会在 Office 编排中处理。本轮无界面或已启用入口变化，不更新截图和测试包。
+
+
+### Office 许可证准备与免费 Retail 顺序修正（进行中）
+
+新增 `office_preparation.rs` 和 `office_runtime.rs`，复用原生 C2R/MSI 安装发现，读取对应 Office PKeyConfig，将产品转换规则连接到缺失许可文件选择、OSPPReady、ProductReleaseIds 和 Server Retail 的 SharedComputerLicensing 配置。先读取所有可准备的产品，再逐项修改；同一安装内重复 Mondo ID 去重。缺失 MSI 许可提示修复安装，产品失败保留错误并继续其他产品；导入后通过 WMI 验证目标 Activation ID，未验证的产品不进入后续密钥安装。
+
+共享 Office 许可加载支持动态产品名，保留 client-issuance → 产品文件 → pkeyconfig 顺序和 UTF-16 原文，先完整解析所有 XML，拒绝 DTD、损坏 XML、超过 256 文件或合计 64 MiB 的导入组。导入中途失败报告已导入数量，不声称已撤销配置或许可导入；这些操作不属于 SPP 存储备份。
+
+修正共享激活执行链的 KMS4k 免费 Office Retail 特例：非 GVLK 产品须先验证 Office 身份、非 KMS 描述及无电话许可，再允许安装；安装后必须确认已许可才能成功返回。未许可时明确报告密钥已安装并停止，不调用 KMS4k；其他非 GVLK 产品仍在安装前拒绝。
+
+141 项本地测试与 Linux/Windows 双目标 Clippy 通过。新增 Mondo 去重、MSI 缺失许可、2024 Preview 文件、动态产品 UTF-16、损坏/DTD/数量限制和导入失败阶段测试；Windows 专用测试只读实际 Office 安装与许可 ID，不执行配置、导入或激活。前两轮 Office Host/APPX CI 40121694619、产品选择 CI 40121947342 均已成功，本轮 Windows CI 待推送验证。
+
+Office GUI 尚未切换：UWP 发现、ClickToRun 服务检查、KMS 横幅配置、最终密钥/订阅缓存清理及激活调度仍需连接，未宣称完整客户端流程或实机验收完成。界面和 dev.7 测试包未改变，未重新生成相同截图。

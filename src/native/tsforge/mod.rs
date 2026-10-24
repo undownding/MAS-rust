@@ -91,5 +91,8 @@ mod auxiliary_runtime;
 pub use auxiliary::Scope as AuxiliaryScope;
 #[cfg(windows)]
 pub use auxiliary_runtime::activate as activate_auxiliary;
+mod office_preparation;
+#[cfg(windows)]
+mod office_runtime;
 mod office_selection;
 mod windows_edition;

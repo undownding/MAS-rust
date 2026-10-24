@@ -10,16 +10,16 @@ use std::{collections::BTreeSet, path::PathBuf};
 use windows_sys::Win32::System::Registry::{KEY_WOW64_32KEY, KEY_WOW64_64KEY};
 use wmi::Variant;
 const APP: &str = "0ff1ce15-a989-479d-af46-f275c6370663";
-struct Installation {
-    version: u32,
-    licenses: PathBuf,
-    products: Vec<String>,
-    config: String,
-    root_key: String,
-    property_bag: bool,
-    view: u32,
+pub(super) struct Installation {
+    pub(super) version: u32,
+    pub(super) licenses: PathBuf,
+    pub(super) products: Vec<String>,
+    pub(super) config: String,
+    pub(super) root_key: String,
+    pub(super) property_bag: bool,
+    pub(super) view: u32,
 }
-fn discover() -> Result<Vec<Installation>, String> {
+pub(super) fn discover() -> Result<Vec<Installation>, String> {
     let mut found = Vec::new();
     let mut seen = BTreeSet::new();
     for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
@@ -99,14 +99,14 @@ fn discover() -> Result<Vec<Installation>, String> {
     }
     Ok(found)
 }
-fn ready(install: &Installation, license: &License) -> Result<(), String> {
+pub(super) fn ready(install: &Installation, product: &str) -> Result<(), String> {
     let target = if install.property_bag {
         &install.root_key
     } else {
         &install.config
     };
     let config = Key::open(target, install.view, true)?.ok_or("Office 配置键已消失")?;
-    let name = format!("{}.OSPPReady", license.product);
+    let name = format!("{}.OSPPReady", product);
     if install.property_bag {
         config.set_dword(&name, 1)?;
     } else {
@@ -130,12 +130,12 @@ fn ready(install: &Installation, license: &License) -> Result<(), String> {
         let mut ids = config.string(name)?.unwrap_or_default();
         if !ids
             .split(',')
-            .any(|p| p.trim().eq_ignore_ascii_case(license.product))
+            .any(|p| p.trim().eq_ignore_ascii_case(product))
         {
             if !ids.is_empty() {
                 ids.push(',');
             }
-            ids.push_str(license.product);
+            ids.push_str(product);
             config.set_string(name, &ids)?;
         }
     }
@@ -249,7 +249,7 @@ pub fn prepare_kms(
                 ));
                 l.install(license.key)?;
                 if !product.eq_ignore_ascii_case(license.product) {
-                    ready(&install, &license)?;
+                    ready(&install, license.product)?;
                 }
                 l.refresh()?;
                 Ok(())
@@ -262,13 +262,13 @@ pub fn prepare_kms(
     Ok(errors)
 }
 
-struct MsiInstallation {
-    version: u32,
+pub(super) struct MsiInstallation {
+    pub(super) version: u32,
     x64: bool,
     dir: PathBuf,
-    products: Vec<String>,
+    pub(super) products: Vec<String>,
 }
-fn discover_msi() -> Result<Vec<MsiInstallation>, String> {
+pub(super) fn discover_msi() -> Result<Vec<MsiInstallation>, String> {
     let mut installs = Vec::new();
     for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
         for version in [14, 15, 16] {

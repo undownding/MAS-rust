@@ -36,6 +36,7 @@ pub trait Backend {
     fn preflight(&mut self, sku: Uuid, method: Method) -> Result<(), String>;
     fn prepare(&mut self, sku: Uuid) -> Result<Prepared, String>;
     fn install(&mut self, prepared: &Prepared) -> Result<(), String>;
+    fn office_without_phone(&mut self, sku: Uuid) -> Result<bool, String>;
     fn office_without_phone_is_licensed(&mut self, sku: Uuid) -> Result<bool, String>;
     fn activate(&mut self, sku: Uuid, method: Method) -> Result<String, String>;
 }
@@ -55,8 +56,14 @@ pub fn run(backend: &mut impl Backend, sku: Uuid, method: Method) -> Result<Stri
     if prepared.product.activation_id != sku {
         return Err("生成密钥的 SKU 与所选产品不一致，未执行安装".into());
     }
-    if method == Method::Kms4k && !prepared.product.channel.eq_ignore_ascii_case("Volume:GVLK") {
-        return Err("KMS4k 要求 Volume:GVLK 产品，未执行安装".into());
+    let kms_non_gvlk =
+        method == Method::Kms4k && !prepared.product.channel.eq_ignore_ascii_case("Volume:GVLK");
+    if kms_non_gvlk
+        && !backend
+            .office_without_phone(sku)
+            .map_err(|e| format!("Office 许可资格检查失败（尚未安装）：{e}"))?
+    {
+        return Err("KMS4k 要求 Volume:GVLK 产品或无需电话许可的 Office 产品，未执行安装".into());
     }
     backend
         .install(&prepared)
@@ -68,6 +75,9 @@ pub fn run(backend: &mut impl Backend, sku: Uuid, method: Method) -> Result<Stri
         .map_err(|e| format!("密钥已安装，Office 许可检查失败：{e}"))?
     {
         return Ok("Office 产品无需电话许可，安装后已验证许可状态。".into());
+    }
+    if kms_non_gvlk {
+        return Err("密钥已安装，但 Office 尚未许可；非 Volume:GVLK 产品不能执行 KMS4k".into());
     }
     backend
         .activate(sku, method)
@@ -133,28 +143,11 @@ impl Backend for Native<'_> {
         }
         Ok(())
     }
+    fn office_without_phone(&mut self, sku: Uuid) -> Result<bool, String> {
+        office_license(sku).map(|(eligible, _)| eligible)
+    }
     fn office_without_phone_is_licensed(&mut self, sku: Uuid) -> Result<bool, String> {
-        use crate::native::licensing::{Licensing, number, string};
-        let licensing = Licensing::new()?;
-        let products = licensing.query(&format!(
-            "SELECT Name,Description,LicenseStatus FROM SoftwareLicensingProduct WHERE ID='{sku}'"
-        ))?;
-        if products.len() != 1 {
-            return Err("安装后的产品记录缺失或不唯一".into());
-        }
-        let p = &products[0];
-        if !string(p, "Name")?.to_ascii_lowercase().contains("office")
-            || string(p, "Description")?
-                .to_ascii_uppercase()
-                .contains("KMS")
-        {
-            return Ok(false);
-        }
-        let context = super::sl::Context::open().map_err(|e| e.to_string())?;
-        Ok(!context
-            .phone_activatable(&windows_sys::core::GUID::from_u128(sku.as_u128()))
-            .map_err(|e| e.to_string())?
-            && number(p, "LicenseStatus")? == 1)
+        office_license(sku).map(|(eligible, licensed)| eligible && licensed)
     }
     fn activate(&mut self, sku: Uuid, method: Method) -> Result<String, String> {
         match method {
@@ -165,6 +158,35 @@ impl Backend for Native<'_> {
     }
 }
 
+/// Read the identity and phone policy both before and after installation. Only
+/// Office products without a KMS description qualify for the key-only exception.
+#[cfg(windows)]
+fn office_license(sku: Uuid) -> Result<(bool, bool), String> {
+    use crate::native::licensing::{Licensing, number, string};
+    let licensing = Licensing::new()?;
+    let products = licensing.query(&format!(
+        "SELECT Name,Description,LicenseStatus FROM SoftwareLicensingProduct WHERE ID='{sku}'"
+    ))?;
+    if products.len() != 1 {
+        return Err("产品记录缺失或不唯一".into());
+    }
+    let p = &products[0];
+    if !string(p, "Name")?.to_ascii_lowercase().contains("office")
+        || string(p, "Description")?
+            .to_ascii_uppercase()
+            .contains("KMS")
+    {
+        return Ok((false, false));
+    }
+    let context = super::sl::Context::open().map_err(|e| e.to_string())?;
+    Ok((
+        !context
+            .phone_activatable(&windows_sys::core::GUID::from_u128(sku.as_u128()))
+            .map_err(|e| e.to_string())?,
+        number(p, "LicenseStatus")? == 1,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +195,7 @@ mod tests {
         calls: Vec<&'static str>,
         fail: &'static str,
         office: bool,
+        eligible: bool,
         channel: &'static str,
         mismatch: bool,
     }
@@ -182,6 +205,7 @@ mod tests {
                 calls: vec![],
                 fail: "",
                 office: false,
+                eligible: false,
                 channel: "Retail",
                 mismatch: false,
             }
@@ -225,6 +249,10 @@ mod tests {
         }
         fn install(&mut self, _: &Prepared) -> Result<(), String> {
             self.step("install")
+        }
+        fn office_without_phone(&mut self, _: Uuid) -> Result<bool, String> {
+            self.step("eligibility")?;
+            Ok(self.eligible)
         }
         fn office_without_phone_is_licensed(&mut self, _: Uuid) -> Result<bool, String> {
             self.step("office")?;
@@ -273,7 +301,32 @@ mod tests {
         assert_eq!(backend.calls, ["preflight", "prepare"]);
         let mut backend = Fake::new();
         assert!(run(&mut backend, Uuid::from_u128(1), Method::Kms4k).is_err());
-        assert_eq!(backend.calls, ["preflight", "prepare"]);
+        assert_eq!(backend.calls, ["preflight", "prepare", "eligibility"]);
+    }
+    #[test]
+    fn kms_free_office_requires_eligibility_then_post_install_license() {
+        for channel in ["Retail", "OEM:NONSLP", "Volume:MAK"] {
+            for licensed in [false, true] {
+                let mut backend = Fake::new();
+                backend.channel = channel;
+                backend.eligible = true;
+                backend.office = licensed;
+                let result = run(&mut backend, Uuid::from_u128(1), Method::Kms4k);
+                assert_eq!(result.is_ok(), licensed);
+                if !licensed {
+                    assert!(result.unwrap_err().contains("密钥已安装"));
+                }
+                assert_eq!(
+                    backend.calls,
+                    ["preflight", "prepare", "eligibility", "install", "office"]
+                );
+            }
+        }
+        let mut backend = Fake::new();
+        backend.fail = "eligibility";
+        let error = run(&mut backend, Uuid::from_u128(1), Method::Kms4k).unwrap_err();
+        assert!(error.contains("尚未安装"));
+        assert_eq!(backend.calls, ["preflight", "prepare", "eligibility"]);
     }
     #[test]
     fn office_check_is_after_install_and_methods_reach_verification() {
