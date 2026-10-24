@@ -1,8 +1,7 @@
 //! Native versioned phone activation operations. Legacy product routing is staged.
 #![allow(dead_code)]
 use super::{
-    crypto::{self, Version},
-    paired_store,
+    crypto, paired_store,
     phone::{self, Change, Target},
     phone_flow::{self, Backend},
     reset, runtime, service, sl,
@@ -105,15 +104,6 @@ pub fn zero_cid(sku: Uuid, report: &dyn Fn(&str)) -> Result<String, String> {
         .map_err(|e| e.to_string())?
     {
         return Err("此产品没有电话激活许可".into());
-    }
-    if layout.version != Version::Modern
-        && context
-            .key_channel(&guid(target.key))
-            .map_err(|e| e.to_string())?
-            .as_deref()
-            == Some("Volume:CSVLK")
-    {
-        return Err("旧版 KMS Host 计数后处理尚未接入，未提交确认 ID 或修改存储。".into());
     }
     let iid = context
         .installation_id(&guid(target.sku))

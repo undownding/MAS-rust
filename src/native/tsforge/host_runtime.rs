@@ -1,9 +1,7 @@
 //! Native KMS host charging after successful SCID/ZeroCID activation.
 #![allow(dead_code)]
 use super::{
-    crypto::{self, Version},
-    host_charge, reset, runtime, service, sl,
-    transaction::Transaction,
+    crypto, host_charge, paired_store, reset, runtime, service, sl, transaction::Transaction,
 };
 use rsa::rand_core::{OsRng, RngCore};
 use std::collections::HashSet;
@@ -60,34 +58,52 @@ pub fn after_activation(sku: Uuid, report: &dyn Fn(&str)) -> Result<(), String> 
         .map_err(|e| e.to_string())?
         .ok_or("KMS Host 产品缺少应用 ID")?;
     drop(context);
-    let path = runtime::preflight()?;
+    let layout = runtime::storage_preflight()?;
     let ids = clients()?;
-    service::stopped("sppsvc", || {
-        let transaction = Transaction::edit(vec![path], |originals| {
-            let (store, production) = reset::decode_modern(originals[0])?;
+    let backup = service::stopped(layout.service, || {
+        let transform = |original: &[u8]| {
+            let (store, production) = reset::decode(original, layout.version)?;
             let mut now = FILETIME::default();
             unsafe {
                 GetSystemTimeAsFileTime(&mut now);
             }
             let timestamp =
                 ((u64::from(now.dwHighDateTime) << 32) | u64::from(now.dwLowDateTime)) as i64;
-            let data = host_charge::apply(&store, uuid(app), timestamp, &ids)?.encode()?;
-            let encrypted = crypto::encrypt(&data, production, Version::Modern)?;
-            if crypto::decrypt(&encrypted, production, Version::Modern)? != data {
+            let data =
+                host_charge::apply_version(&store, layout.version, uuid(app), timestamp, &ids)?
+                    .encode()?;
+            let encrypted = crypto::encrypt(&data, production, layout.version)?;
+            if crypto::decrypt(&encrypted, production, layout.version)? != data {
                 return Err(std::io::Error::other("KMS Host 数据加密回读不一致"));
             }
-            Ok(vec![encrypted])
-        })
-        .map_err(|e| e.to_string())?;
-        report(&format!(
-            "KMS Host 计数备份：{}",
-            transaction.backup_path().display()
-        ));
-        transaction.commit().map_err(|e| e.to_string())?;
-        Ok(())
+            Ok(encrypted)
+        };
+        if layout.version.paired() {
+            let transaction = paired_store::edit(&layout.paths[0], &layout.paths[1], transform)
+                .map_err(|e| e.to_string())?;
+            report(&format!(
+                "KMS Host 双文件计数备份：{}",
+                transaction.backup_path().display()
+            ));
+            transaction.commit().map_err(|e| e.to_string())
+        } else {
+            let transaction = Transaction::edit(layout.paths.clone(), |originals| {
+                transform(originals[0]).map(|bytes| vec![bytes])
+            })
+            .map_err(|e| e.to_string())?;
+            report(&format!(
+                "KMS Host 计数备份：{}",
+                transaction.backup_path().display()
+            ));
+            transaction.commit().map_err(|e| e.to_string())
+        }
     })?;
-    sl::refresh_license_status()
-        .map_err(|e| format!("KMS Host 记录已写入，但许可刷新失败：{e}"))?;
+    sl::refresh_license_status().map_err(|e| {
+        format!(
+            "KMS Host 记录已写入，但许可刷新失败：{e}；计数备份：{}",
+            backup.display()
+        )
+    })?;
     report("KMS Host 已写入并回读校验 25 条客户端计数记录。");
     Ok(())
 }
