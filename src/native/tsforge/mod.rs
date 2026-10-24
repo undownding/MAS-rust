@@ -20,6 +20,8 @@ pub use runtime::{reset, restore};
 
 // Product-key installation/configuration integration is still in progress.
 #[cfg(test)]
+mod key_install;
+#[cfg(test)]
 mod legacy_random;
 #[cfg(test)]
 mod pkey_config;

@@ -282,7 +282,7 @@ impl fmt::Display for Key2005 {
     }
 }
 
-fn utf16(text: &str) -> Vec<u8> {
+pub(super) fn utf16(text: &str) -> Vec<u8> {
     text.encode_utf16()
         .chain([0])
         .flat_map(u16::to_le_bytes)
@@ -301,7 +301,7 @@ fn fixed(output: &mut Vec<u8>, text: &str, size: usize) -> Result<()> {
     output.resize(end, 0);
     Ok(())
 }
-fn guid_string(bytes: [u8; 16]) -> String {
+pub(super) fn guid_string(bytes: [u8; 16]) -> String {
     format!(
         "{:08x}-{:04x}-{:04x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         u32::from_le_bytes(bytes[..4].try_into().unwrap()),
