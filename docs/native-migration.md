@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU 单项（build 9600+，Windows 评估版除外）及重置已接入 Rust；其他范围仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU/Windows KMS Host 单项（build 9600+，Windows 评估版除外）及重置已接入 Rust；其他范围仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的 Office/组合/KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的 Office/组合/Office KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -387,3 +387,10 @@ ESU 按钮现已接入现代原生后端，旧存储仍明确转兼容；Windows
 新增 `windows_host.rs`，连接现代系统上下文、Auto 联网判断、CSVLK 许可导入、KMS Host 产品选择和既有原生安装/SCID/ZeroCID/Host Charge 后端。KMS4k 明确拒绝；旧存储保留兼容准备结果。生成密钥准备增加可选的通道约束，Host 必须为 Volume:CSVLK 才能安装，Windows/ESU 路径不额外限制。导入失败保留已导入数量，后续失败说明许可准备已发生，不声称撤销已安装的 XRM 许可。最终复用 SPP 重评估与错误合并。
 
 126 项本地测试和双平台 Clippy 通过，新增当前版本文件选择、顺序/编码保留、整组损坏拒绝、导入失败阶段测试。Windows 专用测试只读取本机 CSVLK 文件，不调用导入、激活或 Host Charge。ESU 后端 CI 40120508435 已成功；dev.5 联网/SPP CI 40120868061 仍在运行。Host GUI 入口尚未切换，本轮无界面或测试包变化。
+
+
+### Windows KMS Host GUI 接入（v0.6.0-dev.6）
+
+Windows KMS Host 按钮接到现代原生后端，旧存储明确转兼容，原生错误不触发兼容重试。确认窗口说明 CSVLK 主机许可不同于客户端、导入/安装不自动撤销、服务持续运行及系统版本名称可能变化。Windows/ESU/Host 的混合范围标签同步，Office KMS Host 仍为兼容。
+
+126 项本地测试及双平台 Clippy 通过，显式入口分派测试现覆盖 `/Z-WinHost`。README 与实际 Linux 预览截图更新，构建 dev.6 Windows 本地测试包。新增 GUI 路由不代表实际主机激活已经验收；真实许可证导入、主机激活和计数仍需实机验证。dev.5 联网/SPP CI 40120868061 已成功，包含只读 NLM 查询和系统 SPP 导出加载；Host 后端 CI 40121163362 仍在运行。

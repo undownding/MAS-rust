@@ -82,4 +82,6 @@ mod windows_context;
 mod windows_host;
 #[cfg(windows)]
 pub use windows_context::activate as activate_windows;
+#[cfg(windows)]
+pub use windows_host::activate as activate_windows_host;
 mod windows_edition;

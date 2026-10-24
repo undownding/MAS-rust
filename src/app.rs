@@ -88,7 +88,7 @@ impl MasApp {
     }
     fn activation(&mut self, ui: &mut egui::Ui) {
         ui.heading("Windows & Office");
-        ui.label("HWID / Ohook / KMS38 / Online KMS 使用 Rust；TSforge Windows、ESU 与重置已接入原生流程，范围见下方。进度与错误见日志页。");
+        ui.label("HWID / Ohook / KMS38 / Online KMS 使用 Rust；TSforge Windows、ESU、Windows KMS Host 与重置已接入原生流程，范围见下方。进度与错误见日志页。");
         ui.add_space(8.0);
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows / ESU 单项：build 9600+ 使用 Rust；Windows 评估版、旧版及其他激活入口仍兼容。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows / ESU / Windows KMS Host：build 9600+ 使用 Rust；Windows 评估版、旧版及其他激活入口仍兼容。原生激活待实机验收，重置不等于激活。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -140,7 +140,7 @@ impl MasApp {
                 }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
-                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
+                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"] | ["/Z-WinHost"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
                     }
                 });
             });
@@ -347,6 +347,10 @@ impl MasApp {
                             }
                             if op.args == ["/Z-Reset"] {
                                 ui.label("将重置许可存储中的 rearm 计数、宽限/评估计时器及相关标记。每个阶段保留备份；这不等于激活系统。当前原生路径仅处理现代存储布局（build 9600+）。");
+                            }
+                            if op.args == ["/Z-WinHost"] {
+                                ui.label("这是 KMS 主机许可证，不是 KMS 客户端。将导入当前版本的 CSVLK 许可并安装主机密钥；Software Protection 服务会持续运行，部分 Windows 版本可能随后显示不同的版本名称。");
+                                ui.label("支持 StaticCID / ZeroCID，不支持 KMS4k。许可导入和密钥安装不自动撤销；如需回到普通 Windows 许可，请使用 Windows 单项激活。");
                             }
                             if op.args == ["/Ohook"] {
                                 ui.label("将安装 Office 许可和 Rust DLL，并清理用户许可缓存。请先关闭 Office；可能需要重新登录。");

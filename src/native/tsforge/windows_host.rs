@@ -1,6 +1,4 @@
-//! Windows KMS Host preparation and native activation. GUI integration follows
-//! validation of the license-import and generated CSVLK path.
-#![allow(dead_code)]
+//! Windows KMS Host license preparation and native activation from the GUI.
 use super::{
     activation_flow::{self, Method},
     connectivity, host_licenses,
