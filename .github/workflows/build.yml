@@ -15,6 +15,9 @@ jobs:
           components: rustfmt, clippy
           targets: x86_64-pc-windows-msvc, i686-pc-windows-msvc
       - run: cargo fmt --check
+      - name: Verify legacy key vectors against .NET Framework
+        shell: powershell
+        run: ./tools/verify_pkey2005.ps1
       - run: cargo test --locked
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo build --release --locked

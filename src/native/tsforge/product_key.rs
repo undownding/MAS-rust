@@ -1,4 +1,4 @@
-//! PKEY2009 representation from the pinned LibTSforge ProductKey implementation.
+//! PKEY2005/PKEY2009 representation from the pinned LibTSforge ProductKey implementation.
 //! Pure data encoding; does not install keys or alter licensing state.
 use super::{
     binary::{crc32, invalid, word},
@@ -44,30 +44,9 @@ impl Key2009 {
         URI
     }
     pub fn binding(self) -> Result<Vec<u8>> {
-        variable_bag::encode(
-            &[
-                Block {
-                    kind: 2,
-                    reserved: 0,
-                    key: utf16("SppPkeyBindingProductKey"),
-                    value: utf16(&self.to_string()),
-                },
-                Block {
-                    kind: 4,
-                    reserved: 0,
-                    key: utf16("SppPkeyBindingMiscData"),
-                    value: vec![],
-                },
-                Block {
-                    kind: 2,
-                    reserved: 0,
-                    key: utf16("SppPkeyBindingAlgorithm"),
-                    value: utf16(URI),
-                },
-            ],
-            Format::Modern,
-        )
+        binding(&self.to_string(), URI)
     }
+
     /// Windows GUID memory order, as constructed by .NET Guid(byte[16]).
     pub fn binding_id(self) -> Result<[u8; 16]> {
         Ok(Sha256::digest(self.binding()?)[..16].try_into().unwrap())
@@ -93,19 +72,7 @@ impl Key2009 {
         bytes
     }
     pub fn pid3(self, part_number: &str) -> Result<Vec<u8>> {
-        if !part_number.is_ascii() || part_number.contains('\0') || part_number.len() > 16 {
-            return Err(invalid("PID3 part number exceeds ASCII field"));
-        }
-        let mut bytes = Vec::new();
-        word(&mut bytes, 0xa4);
-        word(&mut bytes, 3);
-        bytes.resize(32, 0); // GetPid2 returns an empty string for PKEY2009.
-        word(&mut bytes, self.group);
-        bytes.extend_from_slice(part_number.as_bytes());
-        bytes.resize(160, 0);
-        let reversed: Vec<_> = bytes.iter().rev().copied().collect();
-        bytes.extend_from_slice(&(!crc32(&reversed)).to_be_bytes());
-        Ok(bytes)
+        pid3(self.group, part_number, "")
     }
     pub fn extended_pid(self, metadata: &Metadata<'_>) -> Result<String> {
         if metadata.mpc.len() != 5
@@ -182,6 +149,139 @@ pub struct Metadata<'a> {
     pub day: u32,
     pub year: u32,
 }
+fn binding(text: &str, algorithm: &str) -> Result<Vec<u8>> {
+    variable_bag::encode(
+        &[
+            Block {
+                kind: 2,
+                reserved: 0,
+                key: utf16("SppPkeyBindingProductKey"),
+                value: utf16(text),
+            },
+            Block {
+                kind: 4,
+                reserved: 0,
+                key: utf16("SppPkeyBindingMiscData"),
+                value: vec![],
+            },
+            Block {
+                kind: 2,
+                reserved: 0,
+                key: utf16("SppPkeyBindingAlgorithm"),
+                value: utf16(algorithm),
+            },
+        ],
+        Format::Modern,
+    )
+}
+
+fn pid3(group: u32, part_number: &str, pid2: &str) -> Result<Vec<u8>> {
+    if !part_number.is_ascii()
+        || part_number.contains('\0')
+        || part_number.len() > 16
+        || !pid2.is_ascii()
+        || pid2.contains('\0')
+        || pid2.len() > 24
+    {
+        return Err(invalid(
+            "PID3 ASCII field exceeds width or contains invalid data",
+        ));
+    }
+    let mut bytes = Vec::new();
+    word(&mut bytes, 0xa4);
+    word(&mut bytes, 3);
+    bytes.extend_from_slice(pid2.as_bytes());
+    bytes.resize(32, 0);
+    word(&mut bytes, group);
+    bytes.extend_from_slice(part_number.as_bytes());
+    bytes.resize(160, 0);
+    let reversed: Vec<_> = bytes.iter().rev().copied().collect();
+    bytes.extend_from_slice(&(!crc32(&reversed)).to_be_bytes());
+    Ok(bytes)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Key2005(Key2009);
+impl Key2005 {
+    pub fn bytes(self) -> [u8; 16] {
+        self.0.bytes()
+    }
+    pub fn new(group: u32, serial: u32, security: u64, upgrade: bool) -> Result<Self> {
+        Key2009::new(group, serial, security, upgrade).map(Self)
+    }
+    pub fn algorithm_uri(self) -> &'static str {
+        "msft:rm/algorithm/pkey/2005"
+    }
+    pub fn binding(self) -> Result<Vec<u8>> {
+        binding(&self.to_string(), self.algorithm_uri())
+    }
+    pub fn binding_id(self) -> Result<[u8; 16]> {
+        Ok(Sha256::digest(self.binding()?)[..16].try_into().unwrap())
+    }
+    pub fn phone_data(self, windows7: bool) -> Vec<u8> {
+        let mut bytes = self.0.phone_data(windows7);
+        if !windows7 {
+            bytes[..16].copy_from_slice(&[
+                0x95, 0x15, 0x73, 0xb8, 0xf6, 0xa2, 0x0b, 0x43, 0xa7, 0x99, 0xfb, 0xff, 0xb8, 0x1a,
+                0x8d, 0x73,
+            ]);
+        }
+        bytes
+    }
+    /// Non-OEM last-part entropy is supplied by the caller (0..1000), allowing
+    /// deterministic tests and avoiding time-seeded RNG in runtime integration.
+    pub fn pid2(self, mpc: &str, eula: &str, nonce: u32) -> Result<String> {
+        if mpc.len() != 5 || !mpc.bytes().all(|b| b.is_ascii_digit()) || nonce >= 1000 {
+            return Err(invalid("invalid PID2 MPC or nonce"));
+        }
+        let (high, low, last) = if eula == "OEM" {
+            (
+                "OEM".to_owned(),
+                ((self.0.group / 2) % 100) * 10000 + self.0.serial / 100000,
+                self.0.serial % 100000,
+            )
+        } else {
+            (
+                format!("{:03}", self.0.serial / 1000000),
+                self.0.serial % 1000000,
+                ((self.0.group / 2) % 100) * 1000 + nonce,
+            )
+        };
+        let sum: u32 = low.to_string().bytes().map(|v| u32::from(v - b'0')).sum();
+        let checksum = 7 - sum % 7;
+        Ok(format!("{mpc}-{high}-{low:06}{checksum}-{last:05}"))
+    }
+    pub fn pid3(self, metadata: &Metadata<'_>, nonce: u32) -> Result<Vec<u8>> {
+        pid3(
+            self.0.group,
+            metadata.part_number,
+            &self.pid2(metadata.mpc, metadata.eula, nonce)?,
+        )
+    }
+    pub fn pid4(self, metadata: &Metadata<'_>) -> Result<Vec<u8>> {
+        self.0.pid4(metadata)
+    }
+}
+impl fmt::Display for Key2005 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let seed = (self.0.group as i32)
+            .wrapping_mul(1000000000)
+            .wrapping_add(self.0.serial as i32);
+        let mut random = super::legacy_random::LegacyRandom::new(seed);
+        let mut text = b"H4X3DH4X3DH4X3DH4X3D".to_vec();
+        for _ in 0..5 {
+            text.push(ALPHABET[random.next24()]);
+        }
+        for (index, chunk) in text.chunks(5).enumerate() {
+            if index != 0 {
+                f.write_str("-")?;
+            }
+            f.write_str(std::str::from_utf8(chunk).unwrap())?;
+        }
+        Ok(())
+    }
+}
+
 fn utf16(text: &str) -> Vec<u8> {
     text.encode_utf16()
         .chain([0])
@@ -268,6 +368,39 @@ mod tests {
             );
             assert_eq!(hex(&key.pid4(&metadata()).unwrap()), fixture["pid4"]);
         }
+    }
+    #[test]
+    fn pkey2005_vectors_cover_suffix_pid2_and_binary_formats() {
+        let fixtures: serde_json::Value =
+            serde_json::from_str(include_str!("../../../tests/fixtures/tsforge/key2005.json"))
+                .unwrap();
+        for fixture in fixtures["keys"].as_array().unwrap() {
+            let key = Key2005::new(
+                fixture["group"].as_u64().unwrap() as u32,
+                fixture["serial"].as_u64().unwrap() as u32,
+                fixture["security"].as_u64().unwrap(),
+                fixture["upgrade"].as_bool().unwrap(),
+            )
+            .unwrap();
+            let mut context = metadata();
+            context.eula = fixture["eula"].as_str().unwrap();
+            let nonce = fixture["nonce"].as_u64().unwrap() as u32;
+            assert_eq!(key.to_string(), fixture["text"]);
+            assert_eq!(hex(&key.bytes()), fixture["bytes"]);
+            assert_eq!(
+                key.pid2(context.mpc, context.eula, nonce).unwrap(),
+                fixture["pid2"]
+            );
+            assert_eq!(hex(&key.binding().unwrap()), fixture["binding"]);
+            assert_eq!(hex(&key.binding_id().unwrap()), fixture["binding_id"]);
+            assert_eq!(hex(&key.phone_data(false)), fixture["phone"]);
+            assert_eq!(hex(&key.phone_data(true)), fixture["phone_win7"]);
+            assert_eq!(hex(&key.pid3(&context, nonce).unwrap()), fixture["pid3"]);
+            assert_eq!(hex(&key.pid4(&context).unwrap()), fixture["pid4"]);
+        }
+        let key = Key2005::new(1, 1, 1, false).unwrap();
+        assert!(key.pid2("03612", "Retail", 1000).is_err());
+        assert!(key.pid2("abcde", "OEM", 0).is_err());
     }
     #[test]
     fn rejects_out_of_range_fields_instead_of_silently_masking() {

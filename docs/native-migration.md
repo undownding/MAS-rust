@@ -183,3 +183,11 @@ TSforge 面板新增备份目录输入与恢复按钮，沿用后台执行、进
 `tools/tsforge_key_vectors.py` 使用上游逐字节除法生成文本，而 Rust 使用 u128 除法；CRC 复用独立多项式除法参考实现。五组向量包含零值、所有位宽上限、上游两组 SCID 参数及跨位边界值；逐字节核对密钥、绑定数据/ID、两种电话数据及 PID3/PID4。样本只用于数据编码验证，不安装密钥、不调用许可服务。
 
 该模块暂在测试构建中，尚未接入安装流程。PKEY2005 需要兼容上游使用的 .NET Framework Random(int seed) 五字符后缀，以及 PID2；随机数规则已核对 [Microsoft Reference Source](https://raw.githubusercontent.com/microsoft/referencesource/main/mscorlib/system/random.cs)，后续需用实际 .NET 向量交叉验证。PKeyConfig XML 的算法/产品/范围映射及运行时集成也仍待完成，TSforge 激活按钮保持兼容路由。
+
+### TSforge PKEY2005 与旧版随机数兼容（进行中）
+
+新增 `Key2005` 数据编码，复用已验证的字段布局、绑定 VariableBag 和 PID 固定字段写入，实现上游五字符后缀、算法 URI、绑定 ID、两种电话数据，以及 OEM/非 OEM PID2 与对应 PID3/PID4。PID2 的非 OEM 随机尾数改为由调用方显式提供 0..999 的值，便于后续用系统随机源及固定测试值；尚未接入安装流程。
+
+`legacy_random.rs` 实现上游依赖的 .NET Framework 有种子减法随机数算法，包括 Int32 溢出、负种子及 Int32.MinValue 特例。依据 Microsoft Reference Source 固定提交 `ec9fa9ae770d522a5b5f0607898044b7478574a3`，源码与 MIT 许可保存在 `vendor/dotnet-reference`。该随机数只用于重现 PKEY2005 文本后缀，不用于密码学。
+
+新增五组密钥/PID 向量与 11 组种子的各 128 个随机输出。本地 Rust 与 Python 参考实现匹配，Windows CI 通过 `tools/verify_pkey2005.ps1` 额外调用真实 .NET Framework System.Random 校验随机序列和密钥后缀；该脚本仅为测试用，不随应用运行，也不调用许可 API。68 项本地测试和双平台 Clippy 已通过，实际 Framework 核验结果以本次 CI 为准。接下来仍需 PKeyConfig 配置解析、产品/范围选择、运行时安装与完整激活流程。

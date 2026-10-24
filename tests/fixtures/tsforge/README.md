@@ -25,3 +25,11 @@ PKEY2009 cases verify field packing, base-24/N encoding, binding bag and GUID
 memory bytes, phone payloads, PID3 checksum and PID4 fixed Unicode fields.
 The generator uses byte-wise long division and polynomial-division CRC, while
 the Rust encoder uses u128 arithmetic and a bit-loop CRC. No installation occurs.
+
+`python3 tools/tsforge_legacy_key_vectors.py` regenerates `key2005.json`, containing
+five PKEY2005 encodings/PIDs and eleven seeded RNG sequences of 128 values each.
+The seed list includes Int32.MinValue/MaxValue and seeds produced by unchecked
+MAS group/serial arithmetic. `tools/verify_pkey2005.ps1` validates the sequences
+and key suffixes using actual .NET Framework System.Random on Windows CI before
+Rust tests. The script performs no licensing operations. Reference provenance
+and MIT notice are preserved in `vendor/dotnet-reference`.
