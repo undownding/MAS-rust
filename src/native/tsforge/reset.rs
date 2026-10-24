@@ -80,6 +80,7 @@ pub fn apply(store: &mut Store, step: Step) -> usize {
 
 /// Keep modern callers explicit while sharing authenticated decoding with legacy
 /// layouts. Build 9600 uses Modern (version 3), not the dormant WinBlue envelope.
+#[cfg(test)]
 pub fn decode_modern(original: &[u8]) -> std::io::Result<(Store, bool)> {
     decode(original, super::crypto::Version::Modern)
 }

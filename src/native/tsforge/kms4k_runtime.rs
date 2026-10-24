@@ -1,10 +1,6 @@
 //! Native KMS4k coordination; full TSforge product routing is still being migrated.
 #![allow(dead_code)]
-use super::{
-    crypto::{self, Version},
-    kms4k, reset, runtime, service, sl,
-    transaction::Transaction,
-};
+use super::{crypto, kms4k, paired_store, reset, runtime, service, sl, transaction::Transaction};
 use crate::native::{licensing, registry::Key};
 use uuid::Uuid;
 use windows_sys::{
@@ -49,7 +45,7 @@ fn projected_year(local: &SYSTEMTIME, minutes: u32) -> Result<u32, String> {
 }
 /// Caller holds OperationGuard for the entire operation.
 pub fn activate(sku: Uuid, report: &dyn Fn(&str)) -> Result<String, String> {
-    let path = runtime::preflight()?;
+    let layout = runtime::storage_preflight()?;
     let context = sl::Context::open().map_err(|e| e.to_string())?;
     let id = if sku.is_nil() {
         context
@@ -87,27 +83,43 @@ pub fn activate(sku: Uuid, report: &dyn Fn(&str)) -> Result<String, String> {
     .ok_or("缺少系统构建号")?
     .parse()
     .map_err(|_| "系统构建号无效")?;
-    let backup = service::stopped("sppsvc", || {
-        let transaction = Transaction::edit(vec![path], |originals| {
-            let (store, production) = reset::decode_modern(originals[0])?;
+    let backup = service::stopped(layout.service, || {
+        let transform = |original: &[u8]| {
+            let (store, production) = reset::decode(original, layout.version)?;
             let mut now = FILETIME::default();
             unsafe {
                 GetSystemTimeAsFileTime(&mut now);
             }
-            let modified = kms4k::apply(&store, uuid(app), sku, ticks(now))?.encode()?;
-            let encrypted = crypto::encrypt(&modified, production, Version::Modern)?;
-            if crypto::decrypt(&encrypted, production, Version::Modern)? != modified {
+            let modified =
+                kms4k::apply_version(&store, layout.version, uuid(app), sku, ticks(now))?
+                    .encode()?;
+            let encrypted = crypto::encrypt(&modified, production, layout.version)?;
+            if crypto::decrypt(&encrypted, production, layout.version)? != modified {
                 return Err(std::io::Error::other("KMS4k 加密回读不一致"));
             }
-            Ok(vec![encrypted])
-        })
-        .map_err(|e| e.to_string())?;
-        report(&format!(
-            "KMS4k 存储备份：{}",
-            transaction.backup_path().display()
-        ));
-        transaction.commit().map_err(|e| e.to_string())
+            Ok(encrypted)
+        };
+        if layout.version.paired() {
+            let transaction = paired_store::edit(&layout.paths[0], &layout.paths[1], transform)
+                .map_err(|e| e.to_string())?;
+            report(&format!(
+                "KMS4k 双文件备份：{}",
+                transaction.backup_path().display()
+            ));
+            transaction.commit().map_err(|e| e.to_string())
+        } else {
+            let transaction = Transaction::edit(layout.paths.clone(), |originals| {
+                transform(originals[0]).map(|bytes| vec![bytes])
+            })
+            .map_err(|e| e.to_string())?;
+            report(&format!(
+                "KMS4k 存储备份：{}",
+                transaction.backup_path().display()
+            ));
+            transaction.commit().map_err(|e| e.to_string())
+        }
     })?;
+
     let finish = || -> Result<u32, String> {
         sl::refresh_license_status().map_err(|e| e.to_string())?;
         let context = sl::Context::open().map_err(|e| e.to_string())?;
