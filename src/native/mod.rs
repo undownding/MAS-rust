@@ -48,3 +48,5 @@ pub mod tsforge;
 
 #[cfg(any(windows, test))]
 pub mod office_repair;
+
+pub mod system_repair;

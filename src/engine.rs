@@ -257,6 +257,21 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
     run_compatibility(op, options, report)
 }
 
+pub fn repair_system(
+    kind: crate::native::system_repair::Kind,
+    report: &dyn Fn(&str),
+) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        crate::native::system_repair::run(kind, report)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (kind, report);
+        Err("系统修复需要在 Windows 上运行".into())
+    }
+}
+
 pub fn repair_office(report: &dyn Fn(&str)) -> Result<String, String> {
     #[cfg(windows)]
     {

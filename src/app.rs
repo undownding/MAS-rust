@@ -27,6 +27,7 @@ enum Job {
     License(Product, Action),
     RestoreBackup(String),
     RepairOffice,
+    RepairSystem(crate::native::system_repair::Kind),
 }
 
 pub struct MasApp {
@@ -76,6 +77,7 @@ impl MasApp {
                 ctx.request_repaint();
             };
             let result = match job {
+                Job::RepairSystem(kind) => engine::repair_system(kind, &report),
                 Job::RepairOffice => engine::repair_office(&report),
                 Job::Engine(op, options) => engine::run(op, options, &report),
                 Job::RestoreBackup(path) => engine::restore_tsforge(&path, &report),
@@ -125,6 +127,12 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
+                if category == "工具箱" {
+                    ui.horizontal(|ui| {
+                        if ui.button("DISM 系统映像修复 · Rust").clicked() { self.pending = Some(Job::RepairSystem(crate::native::system_repair::Kind::Dism)); }
+                        if ui.button("SFC 系统文件修复 · Rust").clicked() { self.pending = Some(Job::RepairSystem(crate::native::system_repair::Kind::Sfc)); }
+                    });
+                }
                 if category == "工具箱" && ui.button("Office 快速修复 · Rust").clicked() { self.pending = Some(Job::RepairOffice); }
                 if category == "TSforge" { ui.label("Windows、ESU、Office、Host、APPX、组合与重置入口均使用 Rust，包含相应旧版存储后端；Office 客户端仍要求 Win8+。GUI 最低系统要求不变，原生激活待实机验收。"); }
                 if category == "Online KMS" {
@@ -378,6 +386,10 @@ impl MasApp {
                                     "KMS38 是历史实现，新系统可能不支持。",
                                 );
                             }
+                        }
+                        Job::RepairSystem(kind) => {
+                            ui.label(format!("系统修复：{kind:?}"));
+                            ui.label("将修改系统组件或系统文件，可能持续十几分钟或更久，请保持程序开启。建议先运行 DISM，再运行 SFC。DISM 可能使用 Windows Update 下载修复文件，需要可用网络。原始输出及修复前后诊断日志保存在桌面 AT_Logs；不自动重启。");
                         }
                         Job::RepairOffice => {
                             ui.label("Office 快速修复");
