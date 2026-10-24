@@ -98,6 +98,8 @@ pub fn activate(sku: Uuid, report: &dyn Fn(&str)) -> Result<String, String> {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "尚未完成存储修改".into());
     result.map_err(|e| format!("SCID 失败（{stage}）：{e}；最近一次 IID 修改备份：{backup}"))?;
+    super::host_runtime::after_activation(sku, report)
+        .map_err(|e| format!("SCID 已验证许可状态，但后续 KMS Host 处理失败：{e}"))?;
     Ok(format!(
         "所选产品已报告许可状态；最近一次 IID 修改备份：{backup}"
     ))

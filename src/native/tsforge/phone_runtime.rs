@@ -129,6 +129,8 @@ pub fn zero_cid(sku: Uuid, report: &dyn Fn(&str)) -> Result<String, String> {
             backup.display()
         )
     })?;
+    super::host_runtime::after_activation(target.sku, report)
+        .map_err(|e| format!("ZeroCID 已验证许可状态，但后续 KMS Host 处理失败：{e}"))?;
     Ok(format!(
         "所选产品已报告许可状态；存储备份：{}",
         backup.display()

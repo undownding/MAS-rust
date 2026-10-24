@@ -56,3 +56,8 @@ mod kms4k;
 
 #[cfg(windows)]
 mod kms4k_runtime;
+
+mod host_charge;
+
+#[cfg(windows)]
+mod host_runtime;
