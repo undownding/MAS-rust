@@ -1,5 +1,5 @@
 //! Side-effect-free PKEY2005 installation planning from MAS GenPKeyInstall.
-//! System API calls, registry writes and cache invalidation are not connected yet.
+//! Runtime callers own system API calls, registry transactions and cache invalidation.
 use super::{
     binary::invalid,
     crypto::Version,
@@ -36,12 +36,15 @@ pub struct Plan {
 
 /// Inputs are borrowed; even a late metadata/serialization error cannot mutate them.
 pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<Plan> {
-    if !matches!(
-        request.version,
-        Version::Win8 | Version::WinBlue | Version::Modern
-    ) {
+    if request.version == Version::Vista {
         return Err(invalid(
-            "key installation plan requires modern store layouts",
+            "generated key installation is unsupported on Vista",
+        ));
+    }
+    let win7 = request.version == Version::Win7;
+    if win7 && request.metadata.channel == "Volume:GVLK" {
+        return Err(invalid(
+            "generated PKEY2005 GVLK installation is unsupported on Win7",
         ));
     }
     if request.metadata.activation_id == [0; 16] || request.application_id == [0; 16] {
@@ -52,7 +55,7 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
     if request.windows_family.is_some_and(|s| s.contains('\0')) {
         return Err(invalid("Windows family contains NUL"));
     }
-    let mut store = Store::decode(physical, physical::Format::Modern)?;
+    let mut store = Store::decode(physical, request.version.format())?;
     let mut entries = token::decode(tokens)?;
     let key = request.key;
     let meta = &request.metadata;
@@ -67,7 +70,15 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
         (4, "SppPkeyBindingPid4", pid4.clone()),
         (2, "SppPkeyChannelId", utf16(meta.channel)),
         (2, "SppPkeyBindingEditionId", utf16(meta.edition)),
-        (4, "SppPkeyPhoneActivationData", key.phone_data(false)),
+        (
+            4,
+            if win7 {
+                "SppPkeyShortAuthenticator"
+            } else {
+                "SppPkeyPhoneActivationData"
+            },
+            key.phone_data(win7),
+        ),
         (4, "SppPkeyBindingMiscData", Vec::new()),
     ];
     let data: Vec<_> = data
@@ -94,15 +105,16 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
             ],
         )?;
     }
+    let suffix = if win7 { "_met" } else { "_--_met" };
     edit_metadata(
         &mut entries,
-        "msft:spp/token/PKeyIdUriMapper_--_met",
+        &format!("msft:spp/token/PKeyIdUriMapper{suffix}"),
         false,
         &[(&pkey_id, key.algorithm_uri())],
     )?;
     edit_metadata(
         &mut entries,
-        &format!("{sku_id}_--_met"),
+        &format!("{sku_id}{suffix}"),
         true,
         &[("pkeyId", &pkey_id), ("pkeyIdList", &pkey_id)],
     )?;
@@ -128,11 +140,26 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
             2
         },
         unknown: 0,
-        key: Vec::new(),
+        key: if win7 { name.clone() } else { Vec::new() },
         value: utf16(&pkey_id),
         data,
     };
-    if let Some(target) = store.groups.iter_mut().flatten().find(|k| k.name == name) {
+    if win7 {
+        let matches: Vec<_> = store
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.key == name && b.value == block.value)
+            .map(|(i, _)| i)
+            .collect();
+        if matches.len() > 1 {
+            return Err(invalid("ambiguous physical product key record"));
+        }
+        if let Some(index) = matches.first() {
+            store.blocks.remove(*index);
+        }
+        store.blocks.push(block);
+    } else if let Some(target) = store.groups.iter_mut().flatten().find(|k| k.name == name) {
         if let Some(index) = target.blocks.iter().position(|b| b.value == block.value) {
             target.blocks.remove(index);
         }
@@ -148,7 +175,7 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
     }
     let physical = store.encode()?;
     let tokens = token::encode(&entries)?;
-    if Store::decode(&physical, physical::Format::Modern)? != store {
+    if Store::decode(&physical, request.version.format())? != store {
         return Err(invalid("key installation physical roundtrip mismatch"));
     }
     // Reparse checks hashes, lengths and all serialized token offsets.
@@ -160,7 +187,7 @@ pub fn prepare(physical: &[u8], tokens: &[u8], request: &Request<'_>) -> Result<
             product_id,
             digital_product_id: pid3,
             digital_product_id4: pid4,
-            kms_host: meta.channel == "Volume:CSVLK",
+            kms_host: meta.channel == "Volume:CSVLK" && !win7,
         }),
     })
 }
@@ -379,10 +406,91 @@ mod tests {
                 .unwrap()
                 .kms_host
         );
-        for version in [Version::Vista, Version::Win7] {
-            request.version = version;
-            assert!(prepare(&physical(), TOKENS, &request).is_err());
+        request.version = Version::Vista;
+        assert!(prepare(&physical(), TOKENS, &request).is_err());
+    }
+    #[test]
+    fn win7_plan_uses_short_authenticator_legacy_metadata_and_registry_rules() {
+        let mut request = request();
+        request.version = Version::Win7;
+        request.metadata.channel = "Volume:CSVLK";
+        let initial = Store {
+            header: [7; 8],
+            format: physical::Format::Win7,
+            groups: vec![],
+            blocks: vec![],
         }
+        .encode()
+        .unwrap();
+        let plan = prepare(&initial, TOKENS, &request).unwrap();
+        let store = Store::decode(&plan.physical, physical::Format::Win7).unwrap();
+        assert_eq!(store.header, [7; 8]);
+        let block = &store.blocks[0];
+        let sku = guid_string(request.metadata.activation_id);
+        let app = guid_string(request.application_id);
+        assert_eq!(block.key, utf16(&format!("SPPSVC\\{app}\\{sku}")));
+        assert_eq!(block.flags, 2);
+        let records = bag::decode(&block.data, bag::Format::Modern).unwrap();
+        assert_eq!(records[7].key, utf16("SppPkeyShortAuthenticator"));
+        assert_eq!(records[7].value, request.key.phone_data(true));
+        let registry = plan.registry.as_ref().unwrap();
+        assert!(!registry.kms_host);
+        assert_eq!(records[3].value, registry.digital_product_id);
+        let entries = token::decode(&plan.tokens).unwrap();
+        let key_id = guid_string(request.key.binding_id().unwrap());
+        assert_eq!(
+            metadata(&entries, "msft:spp/token/PKeyIdUriMapper_met").values,
+            [(key_id.clone(), request.key.algorithm_uri().into())]
+        );
+        assert!(
+            metadata(&entries, &format!("{sku}_met"))
+                .values
+                .contains(&("pkeyId".into(), key_id))
+        );
+        let original = token::decode(TOKENS).unwrap();
+        assert_eq!(&entries[..original.len()], original);
+        let again = prepare(&plan.physical, &plan.tokens, &request).unwrap();
+        assert_eq!(again.physical, plan.physical);
+        assert_eq!(again.tokens, plan.tokens);
+        for production in [false, true] {
+            let encrypted =
+                super::super::crypto::encrypt(&plan.physical, production, Version::Win7).unwrap();
+            assert_eq!(
+                super::super::crypto::decrypt(&encrypted, production, Version::Win7).unwrap(),
+                plan.physical
+            );
+        }
+        request.metadata.channel = "Volume:GVLK";
+        assert!(
+            prepare(&initial, TOKENS, &request)
+                .unwrap_err()
+                .to_string()
+                .contains("GVLK")
+        );
+    }
+    #[test]
+    fn win7_plan_preserves_other_products_and_rejects_duplicate_target() {
+        let mut request = request();
+        request.version = Version::Win7;
+        request.windows_family = None;
+        let plan = prepare(&physical(), TOKENS, &request).unwrap();
+        assert!(plan.registry.is_none());
+        let mut store = Store::decode(&plan.physical, physical::Format::Win7).unwrap();
+        let mut other = store.blocks[0].clone();
+        other.key = utf16("SPPSVC\\other-product");
+        other.data = vec![7];
+        store.blocks.insert(0, other.clone());
+        let plan = prepare(&store.encode().unwrap(), &plan.tokens, &request).unwrap();
+        assert_eq!(
+            Store::decode(&plan.physical, physical::Format::Win7)
+                .unwrap()
+                .blocks[0],
+            other
+        );
+        store.blocks.push(store.blocks[1].clone());
+        let before = store.encode().unwrap();
+        assert!(prepare(&before, TOKENS, &request).is_err());
+        assert_eq!(store.encode().unwrap(), before);
     }
     #[test]
     fn physical_replacement_preserves_unknown_records_and_rejects_ambiguous_targets() {
