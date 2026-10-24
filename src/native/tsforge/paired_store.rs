@@ -1,7 +1,7 @@
 //! A paired legacy store uses one file transaction plus a mirror participant.
 //! The mirror's absent/present state is durable before either file is modified.
 #![cfg_attr(not(test), allow(dead_code))]
-use super::transaction::{self, Failure, Participant, Transaction};
+use super::transaction::{self, Failure, Participant, Participants, Transaction};
 use crate::native::hook_files::plain_ancestors;
 use sha2::{Digest, Sha256};
 use std::{
@@ -209,6 +209,20 @@ impl Participant for Mirror {
         } // Failed create_new must never delete someone else's file.
     }
 }
+const EXTRA_REQUIRED: &str = "paired-extra-required";
+struct WithExtra<'a>(Participants<'a>);
+impl Participant for WithExtra<'_> {
+    fn prepare(&mut self, backup: &Path) -> io::Result<()> {
+        save(&backup.join(EXTRA_REQUIRED), b"1\n")?;
+        self.0.prepare(backup)
+    }
+    fn commit(&mut self) -> io::Result<()> {
+        self.0.commit()
+    }
+    fn rollback(&mut self) -> io::Result<()> {
+        self.0.rollback()
+    }
+}
 pub struct Prepared {
     primary: Transaction,
     mirror: Mirror,
@@ -220,31 +234,53 @@ impl Prepared {
     pub fn commit(mut self) -> Result<PathBuf, Failure> {
         self.primary.commit_participating(&mut self.mirror)
     }
+    pub fn commit_participating(mut self, extra: &mut dyn Participant) -> Result<PathBuf, Failure> {
+        let mut participants = WithExtra(Participants::new(vec![&mut self.mirror, extra]));
+        self.primary.commit_participating(&mut participants)
+    }
 }
 pub fn edit(
     primary: &Path,
     secondary: &Path,
     transform: impl FnOnce(&[u8]) -> io::Result<Vec<u8>>,
 ) -> io::Result<Prepared> {
-    let primary_path = canonical(primary)?;
+    edit_files(primary, secondary, &[], |originals| {
+        transform(originals[0]).map(|bytes| vec![bytes])
+    })
+}
+/// Additional existing files (e.g. tokens.dat) share the primary transaction.
+pub fn edit_files(
+    primary: &Path,
+    secondary: &Path,
+    additional: &[PathBuf],
+    transform: impl FnOnce(&[&[u8]]) -> io::Result<Vec<Vec<u8>>>,
+) -> io::Result<Prepared> {
+    let mut paths = vec![canonical(primary)?];
+    for path in additional {
+        paths.push(canonical(path)?);
+    }
     let secondary_path = canonical(secondary)?;
-    if primary_path == secondary_path {
+    if paths.iter().any(|p| p == &secondary_path) {
         return Err(invalid("paired store targets must differ"));
     }
     let mut mirror = Mirror::capture(&secondary_path, Some(Vec::new()))?;
-    let primary = Transaction::edit(vec![primary_path], |originals| {
+    let primary = Transaction::edit(paths, |originals| {
         if originals[0].len() as u64 > MAX_STORE {
             return Err(invalid("paired primary exceeds 64 MiB limit"));
         }
-        let replacement = transform(originals[0])?;
+        let replacements = transform(originals)?;
+        let replacement = replacements
+            .first()
+            .ok_or_else(|| invalid("paired replacement missing primary"))?;
         if replacement.len() as u64 > MAX_STORE {
             return Err(invalid("paired replacement exceeds 64 MiB limit"));
         }
         mirror.desired = Some(replacement.clone());
-        Ok(vec![replacement])
+        Ok(replacements)
     })?;
     Ok(Prepared { primary, mirror })
 }
+
 fn load(backup: &Path, expected: &Path) -> io::Result<Option<Vec<u8>>> {
     plain_ancestors(backup).map_err(io::Error::other)?;
     let marker = backup.join(MARKER);
@@ -285,6 +321,9 @@ pub fn restore(
     mut validate: impl FnMut(&[u8]) -> io::Result<()>,
 ) -> Result<PathBuf, Failure> {
     let mut mirror = (|| {
+        if backup.join(EXTRA_REQUIRED).try_exists()? {
+            return Err(invalid("paired backup requires external-state recovery"));
+        }
         if canonical(primary)? == canonical(secondary)? {
             return Err(invalid("paired store targets must differ"));
         }
@@ -308,9 +347,255 @@ pub fn restore(
     )
 }
 
+/// Restore a paired primary plus additional files and external state. The caller
+/// supplies fixed target paths and loads the external backup before calling.
+pub fn restore_participating(
+    backup: &Path,
+    primary: &Path,
+    secondary: &Path,
+    additional: &[PathBuf],
+    mut validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
+    extra: &mut dyn Participant,
+) -> Result<PathBuf, Failure> {
+    let (paths, mut mirror) = (|| {
+        plain_ancestors(&backup.join(EXTRA_REQUIRED)).map_err(io::Error::other)?;
+        let mut marker = Vec::new();
+        File::open(backup.join(EXTRA_REQUIRED))?
+            .take(3)
+            .read_to_end(&mut marker)?;
+        if marker != b"1\n" {
+            return Err(invalid("invalid paired external-state marker"));
+        }
+        let mut paths = vec![canonical(primary)?];
+        for path in additional {
+            paths.push(canonical(path)?);
+        }
+        let secondary = canonical(secondary)?;
+        if paths.contains(&secondary) {
+            return Err(invalid("paired store targets must differ"));
+        }
+        let mirror = Mirror::capture(&secondary, load(backup, &secondary)?)?;
+        Ok((paths, mirror))
+    })()
+    .map_err(|e: io::Error| Failure {
+        cause: e.to_string(),
+        backup: backup.into(),
+        rollback_errors: vec![],
+    })?;
+    let mut participants = WithExtra(Participants::new(vec![&mut mirror, extra]));
+    transaction::restore_participating(
+        backup,
+        &paths,
+        |index, bytes| {
+            if index == 0 && bytes.len() as u64 > MAX_STORE {
+                return Err(invalid("paired primary backup exceeds 64 MiB limit"));
+            }
+            validate(index, bytes)
+        },
+        &mut participants,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Extra {
+        value: u8,
+        original: u8,
+        desired: u8,
+        fail_commit: bool,
+        fail_rollback: bool,
+    }
+    impl Participant for Extra {
+        fn prepare(&mut self, backup: &Path) -> io::Result<()> {
+            save(&backup.join("test-state.original"), &[self.original])
+        }
+        fn commit(&mut self) -> io::Result<()> {
+            self.value = self.desired;
+            if self.fail_commit {
+                Err(invalid("external commit failed"))
+            } else {
+                Ok(())
+            }
+        }
+        fn rollback(&mut self) -> io::Result<()> {
+            if self.fail_rollback {
+                return Err(invalid("external rollback failed"));
+            }
+            self.value = self.original;
+            Ok(())
+        }
+    }
+    #[test]
+    fn combined_files_and_external_state_restore_absent_mirror_and_support_undo() {
+        let (_dir, primary, mirror) = files(false);
+        let tokens = primary.with_file_name("tokens");
+        fs::write(&tokens, b"tokens old").unwrap();
+        let mut extra = Extra {
+            value: 1,
+            original: 1,
+            desired: 2,
+            fail_commit: false,
+            fail_rollback: false,
+        };
+        let prepared = edit_files(&primary, &mirror, std::slice::from_ref(&tokens), |_| {
+            Ok(vec![b"primary new".to_vec(), b"tokens new".to_vec()])
+        })
+        .unwrap();
+        let backup = prepared.commit_participating(&mut extra).unwrap();
+        assert_eq!(extra.value, 2);
+        assert_eq!(fs::read(&mirror).unwrap(), b"primary new");
+        assert_eq!(fs::read(backup.join("test-state.original")).unwrap(), [1]);
+        let mut restore_extra = Extra {
+            value: 2,
+            original: 2,
+            desired: 1,
+            fail_commit: false,
+            fail_rollback: false,
+        };
+        let mut validated = vec![];
+        let undo = restore_participating(
+            &backup,
+            &primary,
+            &mirror,
+            std::slice::from_ref(&tokens),
+            |index, bytes| {
+                validated.push(index);
+                assert_eq!(
+                    bytes,
+                    if index == 0 {
+                        &b"primary old"[..]
+                    } else {
+                        &b"tokens old"[..]
+                    }
+                );
+                Ok(())
+            },
+            &mut restore_extra,
+        )
+        .unwrap();
+        assert_eq!(validated, [0, 1]);
+        assert!(!mirror.exists());
+        assert_eq!(restore_extra.value, 1);
+        assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
+        let mut redo = Extra {
+            value: 1,
+            original: 1,
+            desired: 2,
+            fail_commit: false,
+            fail_rollback: false,
+        };
+        restore_participating(
+            &undo,
+            &primary,
+            &mirror,
+            std::slice::from_ref(&tokens),
+            |_, _| Ok(()),
+            &mut redo,
+        )
+        .unwrap();
+        assert_eq!(fs::read(&primary).unwrap(), b"primary new");
+        assert_eq!(fs::read(&mirror).unwrap(), b"primary new");
+        assert_eq!(fs::read(&tokens).unwrap(), b"tokens new");
+        assert_eq!(redo.value, 2);
+    }
+    #[test]
+    fn external_failure_rolls_back_all_files_even_when_external_rollback_fails() {
+        for fail_rollback in [false, true] {
+            let (_dir, primary, mirror) = files(false);
+            let tokens = primary.with_file_name("tokens");
+            fs::write(&tokens, b"tokens old").unwrap();
+            let mut extra = Extra {
+                value: 1,
+                original: 1,
+                desired: 2,
+                fail_commit: true,
+                fail_rollback,
+            };
+            let transaction = edit_files(&primary, &mirror, std::slice::from_ref(&tokens), |_| {
+                Ok(vec![b"new".to_vec(), b"new tokens".to_vec()])
+            })
+            .unwrap();
+            let error = transaction.commit_participating(&mut extra).unwrap_err();
+            assert!(error.cause.contains("external commit failed"));
+            assert_eq!(error.rollback_errors.is_empty(), !fail_rollback);
+            assert_eq!(extra.value, if fail_rollback { 2 } else { 1 });
+            assert!(!mirror.exists());
+            assert_eq!(fs::read(&primary).unwrap(), b"primary old");
+            assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
+        }
+    }
+    #[test]
+    fn joint_backup_cannot_be_restored_without_its_external_participant() {
+        let (_dir, primary, mirror) = files(false);
+        let mut extra = Extra {
+            value: 1,
+            original: 1,
+            desired: 2,
+            fail_commit: false,
+            fail_rollback: false,
+        };
+        let backup = edit(&primary, &mirror, |_| Ok(b"new".to_vec()))
+            .unwrap()
+            .commit_participating(&mut extra)
+            .unwrap();
+        assert!(
+            restore(&backup, &primary, &mirror, |_| Ok(()))
+                .unwrap_err()
+                .cause
+                .contains("external-state")
+        );
+        assert_eq!(fs::read(&primary).unwrap(), b"new");
+        assert_eq!(fs::read(&mirror).unwrap(), b"new");
+    }
+    #[test]
+    fn external_prepare_failure_never_changes_files_or_invokes_commit() {
+        struct FailPrepare;
+        impl Participant for FailPrepare {
+            fn prepare(&mut self, _: &Path) -> io::Result<()> {
+                Err(invalid("prepare failed"))
+            }
+            fn commit(&mut self) -> io::Result<()> {
+                panic!("must not commit");
+            }
+            fn rollback(&mut self) -> io::Result<()> {
+                panic!("must not roll back untouched state");
+            }
+        }
+        let (_dir, primary, mirror) = files(false);
+        let tokens = primary.with_file_name("tokens");
+        fs::write(&tokens, b"tokens old").unwrap();
+        let prepared = edit_files(&primary, &mirror, std::slice::from_ref(&tokens), |_| {
+            Ok(vec![b"new".to_vec(), b"new".to_vec()])
+        })
+        .unwrap();
+        assert!(
+            prepared
+                .commit_participating(&mut FailPrepare)
+                .unwrap_err()
+                .cause
+                .contains("prepare failed")
+        );
+        assert!(!mirror.exists());
+        assert_eq!(fs::read(&primary).unwrap(), b"primary old");
+        assert_eq!(fs::read(&tokens).unwrap(), b"tokens old");
+    }
+    #[test]
+    fn additional_target_cannot_alias_mirror_and_missing_outputs_do_not_write() {
+        let (_dir, primary, mirror) = files(true);
+        assert!(
+            edit_files(
+                &primary,
+                &mirror,
+                std::slice::from_ref(&mirror),
+                |_| unreachable!()
+            )
+            .is_err()
+        );
+        assert!(edit_files(&primary, &mirror, &[], |_| Ok(vec![])).is_err());
+        assert_eq!(fs::read(&primary).unwrap(), b"primary old");
+        assert_eq!(fs::read(&mirror).unwrap(), b"mirror old");
+    }
     fn files(secondary: bool) -> (tempfile::TempDir, PathBuf, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let primary = dir.path().join("primary");

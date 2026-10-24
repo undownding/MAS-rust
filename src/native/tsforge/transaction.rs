@@ -132,6 +132,63 @@ pub trait Participant {
     fn rollback(&mut self) -> io::Result<()>;
 }
 
+/// Compose disjoint backup participants. All prepare before any commit, and
+/// rollback attempts every touched participant in reverse order.
+pub struct Participants<'a> {
+    items: Vec<&'a mut dyn Participant>,
+    prepared: bool,
+    started: bool,
+    touched: usize,
+}
+impl<'a> Participants<'a> {
+    pub fn new(items: Vec<&'a mut dyn Participant>) -> Self {
+        Self {
+            items,
+            prepared: false,
+            started: false,
+            touched: 0,
+        }
+    }
+}
+impl Participant for Participants<'_> {
+    fn prepare(&mut self, backup: &Path) -> io::Result<()> {
+        if self.prepared || self.started {
+            return Err(io::Error::other("participants already prepared or started"));
+        }
+        for item in &mut self.items {
+            item.prepare(backup)?;
+        }
+        self.prepared = true;
+        Ok(())
+    }
+    fn commit(&mut self) -> io::Result<()> {
+        if !self.prepared || self.started {
+            return Err(io::Error::other(
+                "participants not prepared or already started",
+            ));
+        }
+        self.started = true;
+        for (index, item) in self.items.iter_mut().enumerate() {
+            self.touched = index + 1; // A failed commit may already have changed state.
+            item.commit()?;
+        }
+        Ok(())
+    }
+    fn rollback(&mut self) -> io::Result<()> {
+        let mut errors = Vec::new();
+        for (index, item) in self.items[..self.touched].iter_mut().enumerate().rev() {
+            if let Err(error) = item.rollback() {
+                errors.push(format!("participant {index}: {error}"));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(io::Error::other(errors.join("; ")))
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("{cause}; backup: {backup}; rollback errors: {rollback_errors:?}")]
 pub struct Failure {
