@@ -27,3 +27,6 @@ mod legacy_random;
 mod pkey_config;
 #[cfg(test)]
 mod product_key;
+
+#[cfg(windows)]
+mod registry_backup;

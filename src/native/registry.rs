@@ -112,6 +112,30 @@ pub struct RawValue {
 
 const MAX_VALUE_BYTES: usize = 16 * 1024 * 1024;
 
+impl RawValue {
+    pub fn validate_write(&self) -> Result<(), String> {
+        validate_raw_write(self.kind, &self.bytes)
+    }
+}
+fn validate_raw_write(kind: u32, bytes: &[u8]) -> Result<(), String> {
+    if bytes.len() > MAX_VALUE_BYTES {
+        return Err("注册表原始值超过 16 MiB 限制".into());
+    }
+    let terminator = match kind {
+        REG_SZ | REG_EXPAND_SZ => 2,
+        REG_MULTI_SZ => 4,
+        _ => 0,
+    };
+    if terminator != 0
+        && (!bytes.len().is_multiple_of(2)
+            || bytes.len() < terminator
+            || bytes[bytes.len() - terminator..].iter().any(|b| *b != 0))
+    {
+        return Err("注册表字符串未按 Win32 写入契约终止；拒绝隐式修补原始值".into());
+    }
+    Ok(())
+}
+
 impl Drop for Key {
     fn drop(&mut self) {
         unsafe {
@@ -322,9 +346,7 @@ impl Key {
         if name.contains('\0') {
             return Err("注册表值名称包含 NUL".into());
         }
-        if bytes.len() > MAX_VALUE_BYTES {
-            return Err("注册表原始值超过 16 MiB 限制".into());
-        }
+        validate_raw_write(kind, bytes)?;
         let code = unsafe {
             RegSetValueExW(
                 self.handle,
@@ -351,6 +373,10 @@ impl Key {
             None => {
                 self.delete_value(name)?;
             }
+        }
+        let code = unsafe { RegFlushKey(self.handle) };
+        if code != 0 {
+            return Err(format!("保存注册表 {name}: Win32 {code}"));
         }
         if self.raw_value(name)?.as_ref() != original {
             return Err(format!("恢复注册表 {name} 后回读不一致"));
@@ -468,14 +494,14 @@ impl Key {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    struct TestKey {
+    pub(crate) struct TestKey {
         key: Option<Key>,
         path: String,
     }
     impl TestKey {
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             let path = format!(
                 r"Software\MAS-Rust-Raw-{}-{}",
                 std::process::id(),
@@ -495,7 +521,7 @@ mod tests {
                 path,
             }
         }
-        fn key(&self) -> &Key {
+        pub(crate) fn key(&self) -> &Key {
             self.key.as_ref().unwrap()
         }
     }
@@ -515,8 +541,7 @@ mod tests {
             (REG_BINARY, vec![0, 255, 128, 0, 1]),
             (REG_BINARY, vec![]),
             (REG_NONE, vec![7]),
-            (REG_SZ, vec![65, 0]), // Deliberately missing the string terminator.
-            (REG_SZ, vec![65]),    // Odd byte count must not be normalized.
+            (REG_SZ, vec![65, 0, 0, 0]),
             (
                 REG_EXPAND_SZ,
                 wide("%SystemRoot%\\测试")
@@ -569,6 +594,13 @@ mod tests {
             key.set_raw("keep", REG_BINARY, &vec![0; MAX_VALUE_BYTES + 1])
                 .is_err()
         );
+        for (kind, bytes) in [
+            (REG_SZ, vec![65, 0]),
+            (REG_SZ, vec![65]),
+            (REG_MULTI_SZ, vec![0, 0]),
+        ] {
+            assert!(key.set_raw("keep", kind, &bytes).is_err());
+        }
         assert_eq!(key.raw_value("keep").unwrap().as_ref(), Some(&original));
         let readonly = Key::open_raw(HKEY_CURRENT_USER, &fixture.path, 0, false)
             .unwrap()

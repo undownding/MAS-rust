@@ -113,6 +113,17 @@ pub struct Transaction {
     journal: File,
 }
 
+/// Non-file state participating in a store transaction (for example registry
+/// values). Preparation must durably save its originals in `backup`, validate
+/// current state, and never modify live state. Commit and rollback must verify
+/// their writes. Caller holds the licensing mutex and keeps SPP stopped.
+pub trait Participant {
+    fn prepare(&mut self, backup: &Path) -> io::Result<()>;
+    fn commit(&mut self) -> io::Result<()>;
+    /// Must handle a partially failed commit and attempt every touched target.
+    fn rollback(&mut self) -> io::Result<()>;
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("{cause}; backup: {backup}; rollback errors: {rollback_errors:?}")]
 pub struct Failure {
@@ -231,18 +242,42 @@ impl Transaction {
     pub fn commit(self) -> Result<PathBuf, Failure> {
         self.commit_with(|_, _, _| Ok(()))
     }
+    #[allow(dead_code)] // Registry participant is being connected to installation.
+    pub fn commit_participating(
+        self,
+        participant: &mut dyn Participant,
+    ) -> Result<PathBuf, Failure> {
+        self.commit_coordinated(Some(participant), |_, _, _| Ok(()))
+    }
     /// Fault injection at each mutation boundary also exercises partial writes.
     fn commit_with(
+        self,
+        before: impl FnMut(usize, bool, &mut File) -> io::Result<()>,
+    ) -> Result<PathBuf, Failure> {
+        self.commit_coordinated(None, before)
+    }
+    fn commit_coordinated(
         mut self,
+        mut participant: Option<&mut dyn Participant>,
         mut before: impl FnMut(usize, bool, &mut File) -> io::Result<()>,
     ) -> Result<PathBuf, Failure> {
         let mut touched = 0;
+        let mut participant_touched = false;
         let result = (|| {
             // Detect changes between preparation and commit before modifying any file.
             for target in &mut self.targets {
                 if read_all(&mut target.file)? != target.original {
                     return Err(invalid("store changed after preparation"));
                 }
+            }
+            if let Some(extra) = participant.as_mut() {
+                // Prevent the file-only recovery entry point from presenting a
+                // partial compound restore as a complete recovery.
+                save(&self.backup.join("external-state-required"), b"1\n")?;
+                sync_directory(&self.backup)?;
+                extra.prepare(&self.backup)?;
+                sync_directory(&self.backup)?;
+                self.record("participant-prepared")?;
             }
             self.record("writing")?;
             for index in 0..self.targets.len() {
@@ -252,10 +287,21 @@ impl Transaction {
                 before(index, false, &mut target.file)?;
                 write_all(&mut target.file, &target.replacement)?;
             }
+            if let Some(extra) = participant.as_mut() {
+                self.record("participant-writing")?;
+                participant_touched = true;
+                extra.commit()?;
+            }
             self.record("committed")
         })();
         if let Err(cause) = result {
             let mut rollback_errors = Vec::new();
+            if participant_touched
+                && let Some(extra) = participant.as_mut()
+                && let Err(error) = extra.rollback()
+            {
+                rollback_errors.push(format!("participant: {error}"));
+            }
             for index in (0..touched).rev() {
                 let target = &mut self.targets[index];
                 if let Err(error) = before(index, true, &mut target.file)
@@ -299,6 +345,11 @@ pub fn restore_validated(
 ) -> Result<PathBuf, Failure> {
     let mut prepare = || -> io::Result<Transaction> {
         plain_ancestors(backup).map_err(io::Error::other)?;
+        if backup.join("external-state-required").try_exists()? {
+            return Err(invalid(
+                "backup also contains external state; coordinated recovery required",
+            ));
+        }
         let manifest_path = backup.join("manifest.json");
         plain_ancestors(&manifest_path).map_err(io::Error::other)?;
         let mut bytes = Vec::new();
@@ -380,6 +431,143 @@ mod tests {
                 format!("original-{index}").as_bytes()
             );
         }
+    }
+    #[derive(Default)]
+    struct ExtraState {
+        value: u32,
+        fail_prepare: bool,
+        fail_commit: bool,
+        fail_rollback: bool,
+        calls: Vec<&'static str>,
+        backup: PathBuf,
+    }
+    impl Participant for ExtraState {
+        fn prepare(&mut self, backup: &Path) -> io::Result<()> {
+            self.calls.push("prepare");
+            if self.fail_prepare {
+                return Err(invalid("participant preparation failed"));
+            }
+            self.backup = backup.into();
+            save(&backup.join("extra.original"), &self.value.to_le_bytes())
+        }
+        fn commit(&mut self) -> io::Result<()> {
+            self.calls.push("commit");
+            let journal = fs::read_to_string(self.backup.join("journal.txt"))?;
+            assert!(journal.ends_with("participant-writing\n"));
+            assert!(self.backup.join("extra.original").is_file());
+            self.value = 42; // Partial mutation occurs before the injected failure.
+            if self.fail_commit {
+                Err(invalid("participant commit failed"))
+            } else {
+                Ok(())
+            }
+        }
+        fn rollback(&mut self) -> io::Result<()> {
+            self.calls.push("rollback");
+            if self.fail_rollback {
+                return Err(invalid("participant rollback failed"));
+            }
+            self.value = u32::from_le_bytes(
+                fs::read(self.backup.join("extra.original"))?
+                    .try_into()
+                    .unwrap(),
+            );
+            Ok(())
+        }
+    }
+    #[test]
+    fn compound_success_keeps_external_backup_and_prevents_file_only_recovery() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState::default();
+        let backup = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut extra)
+            .unwrap();
+        assert_eq!(extra.calls, ["prepare", "commit"]);
+        assert_eq!(extra.value, 42);
+        assert_eq!(fs::read(backup.join("extra.original")).unwrap(), [0; 4]);
+        let error = restore(&backup, &paths).unwrap_err();
+        assert!(error.cause.contains("coordinated recovery required"));
+        assert_eq!(fs::read(&paths[0]).unwrap(), b"");
+        assert_eq!(extra.value, 42);
+    }
+    #[test]
+    fn participant_preparation_failure_changes_no_live_state() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState {
+            fail_prepare: true,
+            ..Default::default()
+        };
+        let error = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut extra)
+            .unwrap_err();
+        assert_eq!(extra.calls, ["prepare"]);
+        assert_eq!(extra.value, 0);
+        assert!(error.rollback_errors.is_empty());
+        assert_original(&paths);
+    }
+    #[test]
+    fn partial_participant_failure_rolls_back_external_state_then_both_files() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState {
+            fail_commit: true,
+            ..Default::default()
+        };
+        let error = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut extra)
+            .unwrap_err();
+        assert_eq!(extra.calls, ["prepare", "commit", "rollback"]);
+        assert_eq!(extra.value, 0);
+        assert!(error.rollback_errors.is_empty());
+        assert_original(&paths);
+        assert!(
+            fs::read_to_string(error.backup.join("journal.txt"))
+                .unwrap()
+                .ends_with("aborted-originals-restored\n")
+        );
+    }
+    #[test]
+    fn participant_rollback_failure_still_restores_files_and_reports_recovery_required() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState {
+            fail_commit: true,
+            fail_rollback: true,
+            ..Default::default()
+        };
+        let error = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut extra)
+            .unwrap_err();
+        assert_eq!(error.rollback_errors.len(), 1);
+        assert!(error.rollback_errors[0].contains("participant rollback failed"));
+        assert_original(&paths);
+        assert_eq!(extra.value, 42);
+        assert!(
+            fs::read_to_string(error.backup.join("journal.txt"))
+                .unwrap()
+                .ends_with("recovery-required\n")
+        );
+    }
+    #[test]
+    fn file_failure_never_commits_prepared_external_state() {
+        let (_dir, paths) = stores();
+        let mut extra = ExtraState::default();
+        let error = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_coordinated(Some(&mut extra), |index, rollback, file| {
+                if index == 1 && !rollback {
+                    file.write_all(b"partial")?;
+                    return Err(invalid("file failure before registry"));
+                }
+                Ok(())
+            })
+            .unwrap_err();
+        assert_eq!(extra.calls, ["prepare"]);
+        assert_eq!(extra.value, 0);
+        assert!(error.rollback_errors.is_empty());
+        assert_original(&paths);
     }
     #[test]
     fn commits_durable_backups_and_explicit_restore_preserves_previous_state() {
