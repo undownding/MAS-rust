@@ -104,3 +104,25 @@ for line in section.splitlines():
         rows.append('\t'.join(fields[:4] + ['1' if len(fields) == 5 and fields[4] == 'NoAct' else '0']))
 assert len(rows) == 29
 (DEST / 'tsforge-evaluation.tsv').write_text('\n'.join(rows) + '\n')
+
+# Preserve embedded underscores in legacy edition IDs (e.g. Embedded_POSReady).
+rows = []
+for label, method in [('ts_oldks', 'kms'), ('ts_winvista', 'phone')]:
+    section = current.split('\n:' + label + '\n', 1)[1].split(') do (', 1)[0]
+    generation = 'vista'
+    for line in section.splitlines():
+        if line.startswith(':: Windows 7') or line.startswith(':: Windows Server 2008 R2'):
+            generation = 'win7'
+        elif line.startswith(':: Windows Vista') or line == ':: Windows Server 2008':
+            generation = 'vista'
+        if not re.match(r'^[0-9a-f]{8}-', line):
+            continue
+        line = line.replace('%f%', '')
+        if method == 'kms':
+            activation, key, edition = line.split('_', 2)
+            channel = 'Volume:GVLK'
+        else:
+            activation, key, channel, edition = re.split('_+', line, maxsplit=3)
+        rows.append('\t'.join([method, generation, activation, key, channel, edition]))
+assert len(rows) == 66
+(DEST / 'tsforge-legacy-windows.tsv').write_text('\n'.join(rows) + '\n')

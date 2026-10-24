@@ -49,3 +49,5 @@ collected from a user's KMS service.
 `native/tsforge-office-conversion.tsv` preserves the pinned `:tsksdata:` Office product/conversion table, including free Retail products and aliases, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
 
 `native/tsforge-evaluation.tsv` contains the 29 evaluation activation ID/key/edition/version rows and NoAct markers from the pinned `:ts_wineval:` section, extracted by `tools/extract_native_data.py` (GPL-3.0-only). These are upstream public evaluation keys, not user-supplied credentials.
+
+`native/tsforge-legacy-windows.tsv` contains the 66 fixed public generic-key rows from pinned `:ts_oldks:` and `:ts_winvista:`, preserving method, OS generation, channel, edition aliases and source order. Extraction is reproducible with `tools/extract_native_data.py` (GPL-3.0-only). These are upstream public keys, not user credentials; edition identifiers retain embedded underscores.

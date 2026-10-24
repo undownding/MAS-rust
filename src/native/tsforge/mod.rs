@@ -25,6 +25,7 @@ pub use runtime::{reset, restore};
 mod key_install;
 #[cfg_attr(not(test), allow(dead_code))]
 mod legacy_random;
+mod legacy_windows;
 #[cfg_attr(not(test), allow(dead_code))]
 mod pkey_config;
 #[cfg_attr(not(test), allow(dead_code))]
