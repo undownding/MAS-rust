@@ -59,7 +59,7 @@ pub(super) fn store_path(filename: &str) -> Result<PathBuf, String> {
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
-fn storage_preflight() -> Result<Physical, String> {
+pub(super) fn storage_preflight() -> Result<Physical, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }
