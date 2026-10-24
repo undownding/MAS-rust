@@ -27,6 +27,10 @@ windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell", "Win32_System_
 wmi = "0.18.4"
 windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_System_TaskScheduler", "Win32_System_Variant", "Win32_System_Ole", "Win32_UI_Shell"] }
 
+[dev-dependencies]
+roxmltree = "0.21.2"
+uuid = "1.29"
+
 [build-dependencies]
 winresource = "0.1.23"
 

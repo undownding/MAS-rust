@@ -14,7 +14,7 @@
 **v0.6.0-dev.2：TSforge 重置与备份恢复入口接入 Rust；Ohook 安装、卸载及 x86/x64 DLL 均使用 Rust。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-TSforge 的重置入口已接入 Rust 存储解析、加密、备份回滚和服务控制，当前支持 build 9600 及更新版本，尚待 Windows 实机验证。TSforge 激活方法、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。PKEY2005/PKEY2009 编码及绑定数据已加入独立向量测试，尚未接入激活。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+TSforge 的重置入口已接入 Rust 存储解析、加密、备份回滚和服务控制，当前支持 build 9600 及更新版本，尚待 Windows 实机验证。TSforge 激活方法、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。PKEY2005/PKEY2009 编码、绑定数据及 PKeyConfig 配置解析已加入测试，尚未接入激活。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 

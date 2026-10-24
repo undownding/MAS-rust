@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<p:ProductKeyConfiguration xmlns:p="http://www.microsoft.com/DRM/PKEY/Configuration/2.0">
+  <p:PublicKeys>
+    <p:PublicKey><p:GroupId>1</p:GroupId><p:AlgorithmId>msft:rm/algorithm/pkey/2009</p:AlgorithmId></p:PublicKey>
+    <p:PublicKey><p:GroupId>2</p:GroupId><p:AlgorithmId>msft:rm/algorithm/pkey/2005</p:AlgorithmId></p:PublicKey>
+  </p:PublicKeys>
+  <p:Configurations>
+    <p:Configuration>
+      <p:ActConfigId>00000000-0000-0000-0000-000000000001</p:ActConfigId><p:RefGroupId>1</p:RefGroupId>
+      <p:EditionId>测试<![CDATA[😀]]></p:EditionId><p:ProductDescription>A<!-- ignored --> &amp; B</p:ProductDescription><p:ProductKeyType>Retail</p:ProductKeyType>
+    </p:Configuration>
+    <p:Configuration>
+      <p:ActConfigId>{00000000-0000-0000-0000-000000000002}</p:ActConfigId><p:RefGroupId>2</p:RefGroupId>
+      <p:EditionId>Legacy</p:EditionId><p:ProductDescription>Legacy sample</p:ProductDescription><p:ProductKeyType>Volume</p:ProductKeyType>
+    </p:Configuration>
+    <p:Configuration>
+      <p:ActConfigId>00000000-0000-0000-0000-000000000003</p:ActConfigId><p:RefGroupId>1</p:RefGroupId>
+      <p:EditionId>NoRange</p:EditionId><p:ProductDescription>No matching ranges</p:ProductDescription><p:ProductKeyType>Retail</p:ProductKeyType>
+    </p:Configuration>
+  </p:Configurations>
+  <p:KeyRanges>
+    <p:KeyRange>
+      <p:RefActConfigId>00000000-0000-0000-0000-000000000001</p:RefActConfigId>
+      <p:Start>10</p:Start><p:End>20</p:End><p:EulaType>Retail</p:EulaType><p:PartNumber>X00-00001:extra;more</p:PartNumber><p:IsValid>true</p:IsValid>
+    </p:KeyRange>
+    <p:KeyRange>
+      <p:RefActConfigId>00000000-0000-0000-0000-000000000001</p:RefActConfigId>
+      <p:Start>100</p:Start><p:End>100</p:End><p:EulaType>Retail-WAU</p:EulaType><p:PartNumber>X00-00002</p:PartNumber><p:IsValid>false</p:IsValid>
+    </p:KeyRange>
+    <p:KeyRange>
+      <p:RefActConfigId>00000000-0000-0000-0000-000000000002</p:RefActConfigId>
+      <p:Start>30</p:Start><p:End>30</p:End><p:EulaType>WAU</p:EulaType><p:PartNumber>X00-00003</p:PartNumber><p:IsValid>false</p:IsValid>
+    </p:KeyRange>
+  </p:KeyRanges>
+</p:ProductKeyConfiguration>

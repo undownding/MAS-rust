@@ -191,3 +191,13 @@ TSforge 面板新增备份目录输入与恢复按钮，沿用后台执行、进
 `legacy_random.rs` 实现上游依赖的 .NET Framework 有种子减法随机数算法，包括 Int32 溢出、负种子及 Int32.MinValue 特例。依据 Microsoft Reference Source 固定提交 `ec9fa9ae770d522a5b5f0607898044b7478574a3`，源码与 MIT 许可保存在 `vendor/dotnet-reference`。该随机数只用于重现 PKEY2005 文本后缀，不用于密码学。
 
 新增五组密钥/PID 向量与 11 组种子的各 128 个随机输出。本地 Rust 与 Python 参考实现匹配，Windows CI 通过 `tools/verify_pkey2005.ps1` 额外调用真实 .NET Framework System.Random 校验随机序列和密钥后缀；该脚本仅为测试用，不随应用运行，也不调用许可 API。68 项本地测试和双平台 Clippy 已通过，实际 Framework 核验结果以本次 CI 为准。接下来仍需 PKeyConfig 配置解析、产品/范围选择、运行时安装与完整激活流程。
+
+### TSforge PKeyConfig 解析与范围选择（进行中）
+
+新增 `pkey_config.rs`：按 XrML 命名空间与固定路径提取 `pkeyConfigData`，解码 Base64/UTF-8 后解析算法、产品、配置 ID 与密钥范围。GUID 统一为规范值，不依赖原 XML 的大小写或大括号形式；保留范围原始部件号，使用时按上游冒号/分号规则取首段。加载按许可证文件 ID 缓存，解析完整成功后再合并；重复产品保留首次加载项，失败不会留下半份配置。
+
+保留上游 `Contains` 的闭区间，以及 `Random.Next` 通常排除终点、起终点相同时返回该点的区别。PKEY2009 排除 EULA 含大小写敏感 `WAU` 的范围，PKEY2005 保留；`IsValid` 作为元数据保留，上游未用于选择过滤。随机选择使用系统随机源与拒绝采样。`Randomized` 按固定上游的 ProductKeyType 字段派生，未赋予额外选择语义。
+
+解析器拒绝缺失/冲突的算法、超出编码位宽或反向区间、重复标量、嵌套标量和未知命名空间，不把未知组默认当作 PKEY2005。禁用 DTD，限制 XML 为 64 MiB/一百万节点；这些限制可能拒绝未覆盖格式，必须明确扩展而非静默猜测。新增合成 XML 测试覆盖命名空间别名、Unicode/CDATA/注释、实体转义、范围边界、WAU、缓存、重复产品及失败事务。
+
+Windows 测试新增经原生 SLC API 读取真实 Windows 许可证内配置并解析的只读验证，不安装密钥、不输出许可证全文。当前配置模块仍在测试构建中，尚未接入 TSforge 激活。72 项本地测试和双平台 Clippy 已通过；真实许可证及前一轮 .NET 核验的结果继续以对应 CI 为准。

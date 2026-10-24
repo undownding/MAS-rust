@@ -22,4 +22,6 @@ pub use runtime::{reset, restore};
 #[cfg(test)]
 mod legacy_random;
 #[cfg(test)]
+mod pkey_config;
+#[cfg(test)]
 mod product_key;

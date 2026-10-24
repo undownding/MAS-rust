@@ -33,3 +33,9 @@ MAS group/serial arithmetic. `tools/verify_pkey2005.ps1` validates the sequences
 and key suffixes using actual .NET Framework System.Random on Windows CI before
 Rust tests. The script performs no licensing operations. Reference provenance
 and MIT notice are preserved in `vendor/dotnet-reference`.
+
+`pkey-config.xml` is a hand-authored synthetic configuration, containing both
+algorithms, ordinary/WAU/singleton ranges, a product without ranges, and Unicode,
+CDATA and comments. It contains no real license or key. Tests embed it in XrML
+with Base64 and mutate namespace/field/range boundaries. A separate Windows-only
+test reads a real OS license through SLC without exporting or modifying it.
