@@ -21,3 +21,23 @@ blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
 assert len(blob) == 596
 (DEST / 'ticket-key.blob').write_bytes(blob)
 print('Extracted HWID/KMS38 tables, fallbacks and the upstream public signing blob.')
+
+section = current.split('\n:ksdata\n', 1)[1].split(') do (', 1)[0]
+rows = []
+family = 'windows'
+for line in section.splitlines():
+    if line.startswith(':: Office'):
+        family = 'office'
+    if re.match(r'^[0-9a-f]{8}-', line):
+        rows.append(family + '\t' + '\t'.join(re.split('_+', line.replace('%f%', ''))))
+(DEST / 'online-kms.tsv').write_text('\n'.join(rows) + '\n')
+section = current.split('\n:kmsfallback\n', 1)[1].split(') do (', 1)[0]
+rows = ['\t'.join(re.split('_+', line.replace('%f%', ''))) for line in section.splitlines() if re.match(r'^\d+_', line)]
+(DEST / 'online-kms-fallback.tsv').write_text('\n'.join(rows) + '\n')
+section = current.split('\n:_tasksetserv\n', 1)[1].split('\n:_taskgetserv', 1)[0]
+servers = []
+for line in section.splitlines():
+    if line.startswith('set "srvlist='):
+        servers.extend(line[len('set "srvlist='):-1].replace('%srvlist%', '').replace('%-%', '').split())
+assert len(servers) == 15
+(DEST / 'kms-servers.txt').write_text('\n'.join(servers) + '\n')

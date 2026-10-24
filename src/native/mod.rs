@@ -11,3 +11,10 @@ mod platform;
 pub mod ticket;
 #[cfg(windows)]
 pub use activation::run;
+
+#[cfg(any(windows, test))]
+pub mod kms;
+#[cfg(windows)]
+pub mod online;
+#[cfg(windows)]
+pub mod renewal;

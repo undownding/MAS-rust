@@ -105,9 +105,15 @@ pub const OPERATIONS: &[Operation] = &[
         legacy: false,
     },
     Operation {
-        title: "卸载 Online KMS / 续期任务",
+        title: "清除 KMS 配置 / 本程序续期任务",
         category: "Online KMS",
         args: &["/K-Uninstall"],
+        legacy: false,
+    },
+    Operation {
+        title: "完整版兼容菜单（Office 转换 / 旧任务卸载）",
+        category: "Online KMS",
+        args: &[],
         legacy: false,
     },
     Operation {
@@ -130,11 +136,24 @@ pub const OPERATIONS: &[Operation] = &[
     },
 ];
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Options {
     pub no_edition_change: bool,
     pub no_renewal: bool,
     pub ts_method: usize,
+    pub kms_server: String,
+    pub kms_port: u16,
+}
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            no_edition_change: false,
+            no_renewal: false,
+            ts_method: 0,
+            kms_server: String::new(),
+            kms_port: 1688,
+        }
+    }
 }
 
 pub fn arguments(op: Operation, options: &Options) -> Vec<&'static str> {
@@ -169,6 +188,13 @@ pub fn run(_op: Operation, _options: Options, _report: &dyn Fn(&str)) -> Result<
 
 #[cfg(windows)]
 pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<String, String> {
+    if op.category == "Online KMS" && !op.args.is_empty() {
+        if op.args == ["/K-Uninstall"] {
+            return crate::native::online::uninstall(report);
+        }
+        let scope = crate::native::kms::Scope::from_switch(op.args[0]).ok_or("未知 KMS 操作")?;
+        return crate::native::online::run(scope, &options, false, report);
+    }
     if is_native(op) {
         return crate::native::run(op, &options, report);
     }
@@ -176,7 +202,7 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
 }
 
 pub fn is_native(op: Operation) -> bool {
-    !op.args.is_empty() && matches!(op.category, "HWID" | "KMS38")
+    !op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS")
 }
 
 #[cfg(windows)]
@@ -305,7 +331,19 @@ mod tests {
     #[test]
     fn native_dispatch_is_explicit() {
         for op in OPERATIONS {
-            assert_eq!(is_native(*op), matches!(op.args, ["/HWID"] | ["/KMS38"]));
+            assert_eq!(
+                is_native(*op),
+                matches!(
+                    op.args,
+                    ["/HWID"]
+                        | ["/KMS38"]
+                        | ["/K-Windows"]
+                        | ["/K-Office"]
+                        | ["/K-ProjectVisio"]
+                        | ["/K-WindowsOffice"]
+                        | ["/K-Uninstall"]
+                )
+            );
         }
     }
     #[test]
@@ -319,6 +357,7 @@ mod tests {
                     no_edition_change: true,
                     no_renewal: true,
                     ts_method: 3,
+                    ..Default::default()
                 },
             ) {
                 assert!(
@@ -341,7 +380,8 @@ mod tests {
                     &Options {
                         no_edition_change: true,
                         no_renewal: true,
-                        ts_method: 1
+                        ts_method: 1,
+                        ..Default::default()
                     }
                 )
                 .is_empty()

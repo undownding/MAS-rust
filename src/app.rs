@@ -84,7 +84,7 @@ impl MasApp {
     }
     fn activation(&mut self, ui: &mut egui::Ui) {
         ui.heading("Windows & Office");
-        ui.label("HWID / KMS38 使用原生 Rust 引擎；其他方式使用兼容引擎。进度与错误显示在日志页。");
+        ui.label("HWID / KMS38 / Online KMS 使用 Rust 主流程；其他方式使用兼容引擎。进度与错误显示在日志页。");
         ui.add_space(8.0);
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
@@ -95,6 +95,16 @@ impl MasApp {
                 &mut self.options.no_renewal,
                 "Online KMS 不创建自动续期任务",
             );
+            ui.label("Online KMS 服务器（留空使用上游固定服务器列表）");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.options.kms_server)
+                    .desired_width(f32::INFINITY)
+                    .hint_text("kms.example.org"),
+            );
+            ui.horizontal(|ui| {
+                ui.label("Online KMS 端口");
+                ui.add(egui::DragValue::new(&mut self.options.kms_port).range(1..=65535));
+            });
             egui::ComboBox::from_label("TSforge 方法")
                 .selected_text(["上游默认", "SCID", "ZCID", "KMS4k"][self.options.ts_method])
                 .show_ui(ui, |ui| {
@@ -107,6 +117,9 @@ impl MasApp {
             egui::CollapsingHeader::new(category).default_open(matches!(category, "HWID" | "Ohook" | "KMS38" | "工具箱")).show(ui, |ui| {
                 if category == "KMS38" {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
+                }
+                if category == "Online KMS" {
+                    ui.label("原生支持 Windows 与已安装的 Office 批量许可。Office Retail 转换、上游旧续期任务卸载使用完整版兼容菜单；高级选项可指定服务器和端口。");
                 }
                 if category == "工具箱" { ui.label("打开完整上游菜单：查询状态、更改 Windows / Office 版本、故障排查、提取 $OEM$、帮助及其他高级设置。"); }
                 ui.horizontal_wrapped(|ui| {
@@ -267,7 +280,7 @@ impl MasApp {
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("HWID / KMS38 核心和许可证管理已迁移 Rust；Ohook / TSforge / Online KMS 与高级工具仍使用上游兼容引擎。");
+                        ui.label("HWID / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；Office 转换、Ohook / TSforge 与高级工具仍使用兼容引擎。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");
@@ -294,6 +307,25 @@ impl MasApp {
                             } else {
                                 "使用上游兼容引擎，仍需要 Windows PowerShell；日志页显示执行结果。"
                             });
+                            if op.category == "Online KMS"
+                                && engine::is_native(*op)
+                                && op.args != ["/K-Uninstall"]
+                            {
+                                ui.label(format!(
+                                    "服务器：{}:{}",
+                                    if options.kms_server.trim().is_empty() {
+                                        "上游固定服务器列表"
+                                    } else {
+                                        options.kms_server.trim()
+                                    },
+                                    options.kms_port
+                                ));
+                                ui.label(if options.no_renewal {
+                                    "不创建自动续期任务"
+                                } else {
+                                    "成功后创建 SYSTEM 续期任务（每 6 小时）"
+                                });
+                            }
                             if op.legacy {
                                 ui.colored_label(
                                     Color32::YELLOW,

@@ -24,7 +24,7 @@
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | 尚未迁移，显式兼容后端 |
 | TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 尚未迁移，显式兼容后端 |
-| Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | 主流程尚未迁移；用户指定主机的许可证配置已原生实现 |
+| Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；Office 通道转换仍为兼容后端 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
 ### HWID / KMS38
@@ -45,13 +45,21 @@
 
 `src/native/activation.rs` 只报告实际查询到的许可状态：HWID 要求 `LicenseStatus=1` 且宽限期为 0；KMS38 要求 `LicenseStatus=1` 且宽限期大于 180 天。已有待处理票据不会被覆盖；服务停止后在导入成功或失败路径均尝试恢复。密钥安装失败与 HRESULT 原样显示，不能把进程退出码当成激活成功。
 
+### Online KMS（v0.3.0）
+
+`src/native/kms.rs` 使用固定上游 `ksdata` / `kmsfallback` 表选择 Windows 密钥，保留已激活的永久许可和 KMS38，并按上游规则区分 Enterprise G。`src/native/online.rs` 直接通过 SPP/OSPP WMI 设置产品专用服务器、激活、重新查询状态；仅在授权且宽限期有效时报告成功。自定义服务器不回退到公共列表；全部失败时尝试还原主机和端口，但不回滚已安装的产品密钥。
+
+`src/native/renewal.rs` 通过 Task Scheduler COM 注册 SYSTEM 任务，无 PowerShell / cmd / schtasks。任务每 6 小时运行 `%ProgramFiles%\MAS-Rust\Renewal` 中按内容哈希命名的程序副本，使用 `--kms-renew` 无界面入口；只续期已有 KMSCLIENT 许可，不安装密钥。注册/删除前检查任务来源标记，避免覆盖同名无关任务。卸载保留可能仍在运行的副本和日志。
+
+当前未迁移 Office Retail → Volume 转换、未安装的 Office 批量许可部署、上游旧任务清理及全部故障修复分支，保留完整兼容菜单。GUI 与后台任务属于不同进程，运行手动激活时应避免同时运行续期任务。此版本尚无 Windows 实机验收结果。
+
 ### 尚未达到上游等价覆盖的地方
 
 - HWID 未迁移地区临时调整、订阅版基础 SKU 纠正、IdentityCRL 清理、损坏许可证修复与网络排障重试。
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- Ohook、TSforge、Online KMS 主流程和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
+- Ohook、TSforge、Office Retail 转换和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 

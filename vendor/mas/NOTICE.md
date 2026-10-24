@@ -16,6 +16,6 @@ The Rust integration writes these bytes to an exclusive temporary directory and 
 
 ## Native migration data
 
-`native/hwid.tsv`, `native/kms38.tsv`, both fallback tables, and `native/ticket-key.blob` are extracted from the above pinned files by `tools/extract_native_data.py`. The blob is the upstream public signing data, not a user credential. The original scripts remain unchanged. Rust implementations derived from those algorithms retain this project's GPL-3.0-only licensing. Independent reference tickets in `tests/fixtures` validate the Rust encoding and signature output.
+`native/hwid.tsv`, `native/kms38.tsv`, their fallback tables, `native/online-kms.tsv`, `native/online-kms-fallback.tsv`, `native/kms-servers.txt`, and `native/ticket-key.blob` are extracted from the above pinned files by `tools/extract_native_data.py`. The blob is the upstream public signing data, not a user credential. The original scripts remain unchanged. Rust implementations derived from those algorithms retain this project's GPL-3.0-only licensing. Independent reference tickets in `tests/fixtures` validate the Rust encoding and signature output.
 
 Since v0.2.0 compatibility scripts are staged under LOCALAPPDATA/MAS-Rust/engine-runs, not the user's Temp subtree, because upstream rejects nested Temp paths. Noninteractive runs stream a log into the GUI. HWID/KMS38 primary activation routes no longer execute those scripts.

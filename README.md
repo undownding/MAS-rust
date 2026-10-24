@@ -11,10 +11,10 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.2.0：HWID / KMS38 主要激活流程与通用许可证管理已迁移到 Rust。**
+**v0.3.0：新增 Online KMS 原生流程与自动续期；HWID / KMS38 和通用许可证管理继续使用 Rust。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-Ohook、TSforge、Online KMS 主流程及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+Ohook、TSforge、Office Retail → Volume 转换及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 
@@ -31,7 +31,7 @@ Ohook、TSforge、Online KMS 主流程及高级工具仍使用固定版本的上
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
 | Ohook / 卸载 | GUI |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX / 重置 | GUI，支持默认、SCID、ZCID、KMS4k 方法 |
-| Online KMS Windows / Office / Project / Visio / 卸载 | GUI，可选择禁止版本更改与禁止自动续期任务 |
+| Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 限已安装的批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
 | 激活状态、Windows / Office 版本切换、排障、OEM 提取、其他高级选项 | 工具箱 → 完整 MAS 菜单 |
 | 密钥安装 / 卸载、联机激活、自定义 KMS 主机与端口 | 许可证页，Rust 直接调用 COM/WMI |
@@ -54,6 +54,17 @@ Ohook、TSforge、Online KMS 主流程及高级工具仍使用固定版本的上
 3. 工具箱中的完整菜单包含上游的版本切换、排障和 OEM 等交互流程。
 4. 非交互任务完成后到“许可证”查询状态；完整交互菜单仍在独立窗口运行。
 5. “日志”页可复制进度与任务结果。兼容引擎非交互日志保存在 `%LOCALAPPDATA%\MAS-Rust\logs`；交互菜单输出在独立窗口显示。
+
+### Online KMS 原生流程
+
+- Windows 根据 SKU 和系统已有 Activation ID 选择 GVLK；已有永久许可或 KMS38 时保留现状。
+- Office / Project / Visio 原生入口仅处理已安装的 KMSCLIENT 许可证。Retail 转换和上游旧续期任务卸载从“完整版兼容菜单”进入。
+- 高级选项可指定服务器与端口；留空使用固定上游服务器列表并重试。指定主机后只连接该主机，失败不会回退到公共服务器。所有尝试失败后恢复原主机与端口；已安装的 GVLK 不会自动还原。
+- 默认在成功后通过 Task Scheduler COM 注册 SYSTEM 续期任务，每 6 小时运行一次；可勾选“不创建自动续期任务”。续期只操作已有 KMS 许可证，不安装密钥或更改版本。
+- 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
+- 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
+
+v0.3.0 的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 
@@ -107,7 +118,7 @@ build.rs          Windows 图标资源和管理员权限清单
 
 ## 验证范围
 
-单元测试覆盖多窗口尺寸布局、参数校验、SKU 匹配、版本回退、票据签名参考向量、原生路由与兼容引擎启动器。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
+单元测试覆盖多窗口尺寸布局、参数校验、SKU 匹配、版本回退、票据签名参考向量、原生路由、Online KMS 选择与重试策略、续期参数/XML 及兼容引擎启动器。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
 
 实机验收需覆盖：中文字体与输出、UAC、独立控制台交互与退出、各 Office 安装布局、各激活方式前后的许可证状态，以及历史 Windows 上的 KMS38。开发环境未执行任何激活操作；用户已反馈 v0.2.0 测试工作正常，具体覆盖范围待补充。
 

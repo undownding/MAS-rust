@@ -9,6 +9,13 @@ mod process;
 use eframe::egui;
 
 fn main() -> eframe::Result<()> {
+    #[cfg(windows)]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if args.first().is_some_and(|arg| arg == "--kms-renew") {
+            std::process::exit(native::renewal::headless(&args));
+        }
+    }
     let icon = load_icon();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
