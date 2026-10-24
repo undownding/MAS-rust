@@ -120,6 +120,31 @@ impl Key {
     pub fn at(hive: Hive, path: &str, view: u32, write: bool) -> Result<Option<Self>, String> {
         Self::open_raw(hive.raw(), path, view, write)
     }
+    pub fn create_child(&self, path: &str) -> Result<Self, String> {
+        let mut handle = ptr::null_mut();
+        let code = unsafe {
+            RegCreateKeyExW(
+                self.handle,
+                wide(path).as_ptr(),
+                0,
+                ptr::null(),
+                0,
+                KEY_READ | KEY_WRITE,
+                ptr::null(),
+                &mut handle,
+                ptr::null_mut(),
+            )
+        };
+        if code == 0 {
+            Ok(Self {
+                handle,
+                mount: None,
+                _privileges: None,
+            })
+        } else {
+            Err(format!("创建注册表 {path}: Win32 {code}"))
+        }
+    }
     pub fn child(&self, path: &str, write: bool) -> Result<Option<Self>, String> {
         Self::open_raw(self.handle, path, 0, write)
     }

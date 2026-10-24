@@ -230,3 +230,32 @@ mod file_tests {
         );
     }
 }
+
+pub fn ohook(version: u32, product: &str) -> Option<License> {
+    include_str!("../../vendor/mas/native/ohook.tsv")
+        .lines()
+        .find_map(|line| {
+            let row: Vec<_> = line.split('\t').collect();
+            (row[0].parse::<u32>().ok() == Some(version) && row[4].eq_ignore_ascii_case(product))
+                .then_some(License {
+                    id: row[1],
+                    key: row[2],
+                    product: row[4],
+                })
+        })
+}
+#[cfg(test)]
+mod hook_tests {
+    use super::*;
+    #[test]
+    fn subscription_keeps_its_edition_for_ohook() {
+        let license = ohook(16, "O365ProPlusRetail").unwrap();
+        assert_eq!(license.product, "O365ProPlusRetail");
+        assert_eq!(license.key.len(), 29);
+        assert_ne!(
+            license.id,
+            select(16, "O365ProPlusRetail", true).unwrap().id
+        );
+        assert!(ohook(14, "O365ProPlusRetail").is_none());
+    }
+}

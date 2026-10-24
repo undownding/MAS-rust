@@ -16,7 +16,7 @@ out = root / 'dist'
 out.mkdir(exist_ok=True)
 shutil.copy2(exe, out / 'mas-rust.exe')
 source = [root / p for p in ['Cargo.toml', 'Cargo.lock', 'build.rs', 'README.md', 'LICENSE', '.gitignore', '.gitattributes']]
-for folder in ['src', 'assets', 'tools', 'vendor', '.github', 'screenshots', 'docs', 'tests']:
+for folder in ['src', 'assets', 'tools', 'build_support', 'vendor', '.github', 'screenshots', 'docs', 'tests']:
     source.extend(p for p in (root / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts)
 package = out / f'mas-rust-v{version}-windows-x64.zip'
 with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:

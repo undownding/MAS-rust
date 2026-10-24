@@ -22,7 +22,7 @@
 | 通用许可证管理 | `dk_actids`、`dk_inskey`、`dk_refresh`、`dk_act` | WMI 查询、安装密钥、刷新状态、激活、配置 KMS | 使用 COM/WMI 直接调用，不运行 PowerShell / WMIC / cscript |
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
-| Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | 卸载文件和注册表路径已迁移；安装及 hook DLL 仍在迁移 |
+| Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
 | TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 尚未迁移，显式兼容后端 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
@@ -61,13 +61,13 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- Ohook、TSforge、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
+- TSforge、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
 不能仅把调用 PowerShell 的启动器换成 Rust 就认为 TSforge 已迁移。上游的 `SLApi`、`PKeyConfig`、`ProductKey`、`PhysStoreCrypto`、`TokenStoreModern`、`ModernBlock`、`VistaBlock`、`Win7Block`、`VariableBag`、`ZeroCID`、`KMS4k` 等需要分别实现。进入写入许可存储之前，需要覆盖真实存储样本的解析、重序列化一致性、校验和与加密测试，以及备份恢复流程。
 
-Ohook 还包括独立 hook DLL，完整 Rust 实现需要兼容 DLL 导出与转发行为，并验证 Office x86/x64、C2R/MSI 的路径和卸载恢复。现阶段未将原始 DLL 的解码部署伪称为 Rust 重写。
+Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 DLL；Office x86/x64、C2R/MSI 的真实安装与卸载仍需实测。
 
 ## 验证与实机验收
 
@@ -105,3 +105,13 @@ Ohook 还包括独立 hook DLL，完整 Rust 实现需要兼容 DLL 导出与转
 `office_cleanup.rs` 实现用户/机器许可缓存、共享/设备/OEM 设置清理，并在卸载时移除用户和默认配置的 Resiliency。离线用户配置使用 RegLoadKey、临时挂载名称及权限恢复，显式关闭句柄并卸载；失败逐项报告。没有将 RegLoadAppKey 当作通用 NTUSER 加载器，其安全描述符限制见 [Microsoft 文档](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regloadappkeyw)。
 
 新增临时文件测试覆盖 DLL 恢复、冲突备份保护及符号链接边界；Windows CI 另测独立 HKCU 测试树的删除边界和互斥锁的竞争/释放。自动检查不等价于已安装 Office 的卸载和离线用户配置实测。上方总清单仍未完成。
+
+
+### v0.5.0-dev：Ohook DLL 与安装路径
+
+- 固定 `massgravel/ohook-rs` 提交 `044af0e99d40a449c855d989feb7ad8ff042783f`，保留 MIT 许可。构建时直接调用 Rust 编译器和自带 LLD，源码及本地改动见 `vendor/ohook-rs/NOTICE.md`。
+- 去掉上游空导出桩后，以原始 DEF 文件生成系统函数转发；构建阶段核对机器类型及每项转发，防止“DLL 编译成功，但实际调用空函数”。修正 Grace 检索的字节/UTF-16 长度边界。
+- C2R/MSI 从上游 Ohook 表选择原产品许可，保持订阅产品 ID；设置 ProductReleaseIds、必要的服务器共享许可、Resiliency；清理可安全区分的旧密钥。Office 2010 使用 OSPP 服务和原 DLL 备份。
+- 文件替换前暂存新文件及链接，出现失败按逆序恢复；回滚失败保留备份路径。不同安装目标间不是一次整体事务，失败结果会报告部分完成。
+- Windows 隔离测试用真实 x86/x64 hook、模拟 SPP DLL 和独立测试进程验证错误透传、未授权/Grace 产品保留、状态字段修改，不调用真实许可服务。还需要 Office 实机验收、旧预览许可修复、Insider 许可刷新及完整故障分支。
+- DLL 不做随机时间戳/哈希修改，便于核对构建产物。当前仍非完整纯 Rust MAS，TSforge 和高级菜单仍须继续迁移。

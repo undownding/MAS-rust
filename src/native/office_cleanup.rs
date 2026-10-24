@@ -233,3 +233,29 @@ pub fn remove_ohook_registry(report: &dyn Fn(&str)) -> Result<(), String> {
     }
     finish(errors)
 }
+
+pub fn enable_resiliency(report: &dyn Fn(&str)) -> Result<(), String> {
+    let mut errors = Vec::new();
+    let set = |hive: Key| -> Result<(), String> {
+        {
+            let key = hive.create_child(RESILIENCY)?;
+            key.set_string("TimeOfLastHeartbeatFailure", "2040-01-01T00:00:00Z")?;
+        }
+        hive.finish()
+    };
+    for profile in profiles()? {
+        record(&mut errors, user_hive(&profile).and_then(&set));
+    }
+    if let Some(list) = Key::open(PROFILES, KEY_WOW64_64KEY, false)?
+        && let Some(default) = list.string("Default")?
+    {
+        let path = PathBuf::from(default).join("NTUSER.DAT");
+        if path.is_file() {
+            record(&mut errors, Key::load_offline(&path).and_then(set));
+        }
+    }
+    if errors.is_empty() {
+        report("已设置 Ohook 用户及默认配置的 Resiliency");
+    }
+    finish(errors)
+}

@@ -35,3 +35,10 @@ pub mod ohook;
 
 #[cfg(windows)]
 pub mod session;
+
+#[cfg(test)]
+#[path = "../../vendor/ohook-rs/src/policy.rs"]
+mod hook_policy;
+#[cfg(test)]
+#[path = "../../build_support/pe.rs"]
+mod pe_tests;

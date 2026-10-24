@@ -262,21 +262,37 @@ pub fn prepare_kms(
     Ok(errors)
 }
 
-fn prepare_msi(l: &Licensing, scope: Scope, report: &dyn Fn(&str)) -> Result<Vec<String>, String> {
-    let mut errors = Vec::new();
-    let mut installed = BTreeSet::new();
+struct MsiInstallation {
+    version: u32,
+    x64: bool,
+    dir: PathBuf,
+    products: Vec<String>,
+}
+fn discover_msi() -> Result<Vec<MsiInstallation>, String> {
+    let mut installs = Vec::new();
     for view in [KEY_WOW64_64KEY, KEY_WOW64_32KEY] {
         for version in [14, 15, 16] {
             let path = format!(r"SOFTWARE\Microsoft\Office\{version}.0");
+            let Some(root) = Key::open(&format!(r"{path}\Common\InstallRoot"), view, false)? else {
+                continue;
+            };
+            let Some(dir) = root.string("Path")? else {
+                continue;
+            };
+            let dir = PathBuf::from(dir);
+            if !dir.is_dir() {
+                continue;
+            }
             let Some(packages) =
                 Key::open(&format!(r"{path}\Common\InstalledPackages"), view, false)?
             else {
                 continue;
             };
             let packages = packages.value_names()?.join(" ").to_ascii_uppercase();
+            let mut products = BTreeSet::new();
             for row in include_str!("../../vendor/mas/native/office-msi.tsv").lines() {
                 let row: Vec<_> = row.split('\t').collect();
-                if row[0].parse::<u32>().ok() != Some(version) || !scope.includes_office(row[3]) {
+                if row[0].parse::<u32>().ok() != Some(version) {
                     continue;
                 }
                 let Some(reg) =
@@ -288,42 +304,274 @@ fn prepare_msi(l: &Licensing, scope: Scope, report: &dyn Fn(&str)) -> Result<Vec
                     continue;
                 };
                 let marker = format!("-{}-", row[2]);
-                if !code.to_ascii_uppercase().contains(&marker) || !packages.contains(&marker) {
-                    continue;
+                if code.to_ascii_uppercase().contains(&marker) && packages.contains(&marker) {
+                    products.insert(row[3].to_owned());
                 }
-                let Some(license) = office_catalog::select(version, row[3], false) else {
-                    report(&format!(
-                        "Office {version} MSI {} 不支持 KMS 转换；保留现有许可",
-                        row[3]
-                    ));
-                    continue;
-                };
-                if !installed.insert(license.id) {
-                    continue;
-                }
-                let result = (|| -> Result<(), String> {
-                    let service = if version == 14 {
-                        "OfficeSoftwareProtectionService"
-                    } else {
-                        "SoftwareLicensingService"
-                    };
-                    report(&format!(
-                        "Office {version} MSI {}：安装密钥末五位 {}",
-                        license.product,
-                        &license.key[24..]
-                    ));
-                    l.service(
-                        service,
-                        "InstallProductKey",
-                        &[("ProductKey", Variant::String(license.key.into()))],
-                    )?;
-                    l.service(service, "RefreshLicenseStatus", &[])
-                })();
-                if let Err(e) = result {
-                    errors.push(format!("Office {version} MSI {}：{e}", row[3]));
-                }
+            }
+            if !products.is_empty() {
+                installs.push(MsiInstallation {
+                    version,
+                    x64: view == KEY_WOW64_64KEY,
+                    dir,
+                    products: products.into_iter().collect(),
+                });
+            }
+        }
+    }
+    Ok(installs)
+}
+fn prepare_msi(l: &Licensing, scope: Scope, report: &dyn Fn(&str)) -> Result<Vec<String>, String> {
+    let mut errors = Vec::new();
+    let mut installed = BTreeSet::new();
+    for install in discover_msi()? {
+        for product in install.products {
+            if !scope.includes_office(&product) {
+                continue;
+            }
+            let Some(license) = office_catalog::select(install.version, &product, false) else {
+                report(&format!(
+                    "Office MSI {product} 不支持 KMS 转换；保留现有许可"
+                ));
+                continue;
+            };
+            if !installed.insert(license.id) {
+                continue;
+            }
+            let service = if install.version == 14 {
+                "OfficeSoftwareProtectionService"
+            } else {
+                "SoftwareLicensingService"
+            };
+            report(&format!(
+                "Office MSI {product}：安装密钥末五位 {}",
+                &license.key[24..]
+            ));
+            if let Err(e) = l
+                .service(
+                    service,
+                    "InstallProductKey",
+                    &[("ProductKey", Variant::String(license.key.into()))],
+                )
+                .and_then(|_| l.service(service, "RefreshLicenseStatus", &[]))
+            {
+                errors.push(format!("Office MSI {product}：{e}"));
             }
         }
     }
     Ok(errors)
+}
+
+pub struct HookPreparation {
+    pub targets: Vec<super::ohook::Target>,
+    pub errors: Vec<String>,
+    pub c2r16: bool,
+    pub keep_shared: bool,
+}
+fn ensure_hook_license(
+    l: &Licensing,
+    version: u32,
+    license: &License,
+    dir: Option<&std::path::Path>,
+    report: &dyn Fn(&str),
+) -> Result<(), String> {
+    let (service, class, app) = if version == 14 {
+        (
+            "OfficeSoftwareProtectionService",
+            "OfficeSoftwareProtectionProduct",
+            "59a52881-a989-479d-af46-f275c6370663",
+        )
+    } else {
+        ("SoftwareLicensingService", "SoftwareLicensingProduct", APP)
+    };
+    let mut present = false;
+    for p in l.products(class, app, false)? {
+        if string(&p, "ID")?.eq_ignore_ascii_case(license.id) {
+            present = true;
+            if string(&p, "PartialProductKey")?.eq_ignore_ascii_case(&license.key[24..]) {
+                return Ok(());
+            }
+        }
+    }
+    if !present {
+        let dir = dir.ok_or("MSI 许可缺失，请修复 Office 安装")?;
+        for (path, xml) in office_catalog::missing_files(dir, license)? {
+            report(&format!("导入 {}", path.display()));
+            l.service(
+                service,
+                "InstallLicense",
+                &[("LicenseFile", Variant::String(xml))],
+            )?;
+        }
+    }
+    report(&format!(
+        "安装 {} 密钥（末五位 {}）",
+        license.product,
+        &license.key[24..]
+    ));
+    l.service(
+        service,
+        "InstallProductKey",
+        &[("ProductKey", Variant::String(license.key.into()))],
+    )?;
+    l.service(service, "RefreshLicenseStatus", &[])?;
+    for p in l.products(class, app, true)? {
+        if string(&p, "ID")?.eq_ignore_ascii_case(license.id)
+            && string(&p, "PartialProductKey")?.eq_ignore_ascii_case(&license.key[24..])
+        {
+            return Ok(());
+        }
+    }
+    Err(format!("密钥安装后未找到目标许可 {}", license.id))
+}
+pub fn prepare_ohook(l: &Licensing, report: &dyn Fn(&str)) -> Result<HookPreparation, String> {
+    let c2r = discover()?;
+    let msi = discover_msi()?;
+    let retain_msi_keys = msi.iter().any(|i| i.version >= 15);
+    let server = Key::open(
+        r"SYSTEM\CurrentControlSet\Control\ProductOptions",
+        KEY_WOW64_64KEY,
+        false,
+    )?
+    .and_then(|k| k.string("ProductType").ok().flatten())
+    .is_some_and(|p| !p.eq_ignore_ascii_case("WinNT"));
+    let mut result = HookPreparation {
+        targets: Vec::new(),
+        errors: Vec::new(),
+        c2r16: false,
+        keep_shared: false,
+    };
+    let mut keep = BTreeSet::new();
+    for install in c2r {
+        let config = Key::open(&install.config, install.view, true)?.ok_or("Office 配置缺失")?;
+        let platform = config.string("Platform")?.ok_or("Office Platform 缺失")?;
+        let x64 = match platform.to_ascii_lowercase().as_str() {
+            "x64" => true,
+            "x86" => false,
+            _ => return Err(format!("不支持的 Office 架构：{platform}")),
+        };
+        let dir = install
+            .licenses
+            .parent()
+            .ok_or("无效 Office 根路径")?
+            .join("vfs")
+            .join(if x64 { "System" } else { "SystemX86" });
+        let target = super::ohook::Target {
+            dir,
+            x64,
+            ospp: false,
+        };
+        super::ohook::preflight(&target)?;
+        let mut failed = false;
+        let files = license_files(&install.licenses)?;
+        let preview = files.iter().any(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("ProPlus2024PreviewVL_")
+        }) && !files.iter().any(|p| {
+            p.file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("ProPlus2024VL_")
+        });
+        for product in &install.products {
+            let product = if preview && product.contains("2024") {
+                format!("{product}-Preview")
+            } else {
+                product.clone()
+            };
+            let Some(license) = office_catalog::ohook(install.version, &product) else {
+                result.errors.push(format!(
+                    "未找到 Office {} / {product} 的 Ohook 许可",
+                    install.version
+                ));
+                failed = true;
+                continue;
+            };
+            match ensure_hook_license(
+                l,
+                install.version,
+                &license,
+                Some(&install.licenses),
+                report,
+            ) {
+                Ok(()) => {
+                    keep.insert(license.id.to_ascii_lowercase());
+                }
+                Err(e) => {
+                    result.errors.push(e);
+                    failed = true;
+                }
+            }
+        }
+        if !failed {
+            config.set_string(
+                if install.property_bag {
+                    "ProductReleaseId"
+                } else {
+                    "ProductReleaseIds"
+                },
+                &install.products.join(","),
+            )?;
+            if server
+                && install.products.iter().any(|p| p.contains("Retail"))
+                && files.iter().any(|p| {
+                    p.file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with("Word2019VL_KMS_Client_AE")
+                })
+            {
+                config.set_string("SharedComputerLicensing", "1")?;
+                result.keep_shared = true;
+            }
+            result.c2r16 |= install.version == 16;
+            result.targets.push(target);
+        }
+    }
+    for install in msi {
+        let target = super::ohook::Target {
+            dir: install.dir,
+            x64: install.x64,
+            ospp: install.version == 14,
+        };
+        super::ohook::preflight(&target)?;
+        let mut failed = false;
+        for product in install.products {
+            let Some(license) = office_catalog::ohook(install.version, &product) else {
+                result
+                    .errors
+                    .push(format!("未找到 Office MSI {product} 的 Ohook 许可"));
+                failed = true;
+                continue;
+            };
+            match ensure_hook_license(l, install.version, &license, None, report) {
+                Ok(()) => {
+                    keep.insert(license.id.to_ascii_lowercase());
+                }
+                Err(e) => {
+                    result.errors.push(e);
+                    failed = true;
+                }
+            }
+        }
+        if !failed {
+            result.targets.push(target);
+        }
+    }
+    if result.errors.is_empty()
+        && !retain_msi_keys
+        && !keep.is_empty()
+        && !result.targets.is_empty()
+    {
+        for p in l.products("SoftwareLicensingProduct", APP, true)? {
+            if !keep.contains(&string(&p, "ID")?.to_ascii_lowercase()) {
+                report(&format!("卸载冲突 Office 许可：{}", string(&p, "Name")?));
+                if let Err(e) = l.product_method(&p, "UninstallProductKey") {
+                    result.errors.push(e);
+                }
+            }
+        }
+    }
+    Ok(result)
 }

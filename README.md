@@ -11,10 +11,10 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.4.0-dev.2：新增 Ohook 原生卸载、Office 缓存清理及 GUI / 自动续期互斥。**
+**v0.5.0-dev：Ohook 安装与卸载均使用 Rust，内嵌 x86/x64 DLL 从固定 Rust 源码构建。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 
@@ -29,7 +29,7 @@ Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版�
 | 功能 | 入口 |
 | --- | --- |
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
-| Ohook / 卸载 | 安装仍为兼容引擎；卸载已迁移 Rust |
+| Ohook / 卸载 | Rust 许可准备、DLL 构建/部署、用户配置和卸载恢复 |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX / 重置 | GUI，支持默认、SCID、ZCID、KMS4k 方法 |
 | Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 支持 C2R 转换及 MSI 批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
@@ -55,9 +55,11 @@ Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版�
 4. 非交互任务完成后到“许可证”查询状态；完整交互菜单仍在独立窗口运行。
 5. “日志”页可复制进度与任务结果。兼容引擎非交互日志保存在 `%LOCALAPPDATA%\MAS-Rust\logs`；交互菜单输出在独立窗口显示。
 
-### Ohook 原生卸载
+### Ohook 原生安装与卸载
 
-“卸载 Ohook”直接清除 Office 目录中的 hook 文件、恢复保存的原始 OSPPC，并清理用户及默认配置中的 Resiliency 和 Office 横幅设置，不运行脚本。不卸载 Office 产品密钥；文件被占用或出现冲突原 DLL 时会报错，关闭 Office 后可重试。安装路径及 DLL 的 Rust 重写仍在进行。
+DLL 基于固定版本的 [ohook-rs](https://github.com/massgravel/ohook-rs/tree/044af0e99d40a449c855d989feb7ad8ff042783f)（MIT）构建，构建阶段逐项校验 PE 架构与转发导出；不从 MAS 脚本提取 DLL，也不随机修改 DLL 哈希。安装后需重新打开 Office 验证效果，WMI 状态不反映进程内 hook 效果。
+
+“卸载 Ohook”直接清除 Office 目录中的 hook 文件、恢复保存的原始 OSPPC，并清理用户及默认配置中的 Resiliency 和 Office 横幅设置，不运行脚本。不卸载 Office 产品密钥；文件被占用或出现冲突原 DLL 时会报错，关闭 Office 后可重试。安装流程覆盖 C2R、MSI 和 Office 2010 OSPP；DLL 替换失败会尝试恢复原文件，恢复失败时保留备份并显示路径。
 
 ### Online KMS 原生流程
 
@@ -69,7 +71,7 @@ Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版�
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.4.0-dev 系列的 Office 转换、缓存清理及 Ohook 卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 
@@ -80,15 +82,19 @@ GUI 目标为 Windows 10/11 x64，运行时通过 EXE 清单请求管理员权�
 ```sh
 git clone https://github.com/undownding/MAS-rust.git
 cd MAS-rust
+rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
 cargo test --locked
 cargo build --release --locked
 ```
 
 Windows 原生构建输出为 `target/release/mas-rust.exe`。Linux 预览可以运行 `cargo run --locked`，需要桌面显示服务以及 X11 / Wayland、Fontconfig 和 OpenGL 相关运行库。
 
+Windows 构建还会使用 Rust 自带 LLD 从源码编译两种架构的无标准库 Ohook DLL，因此需安装上述两个 MSVC Rust 目标。Linux 界面预览不构建 DLL。
+
 Linux 交叉编译 Windows（需安装 Rust Windows GNU 目标及 MinGW）：
 
 ```sh
+rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
 cargo build --release --locked --target x86_64-pc-windows-gnu
 ```
 
@@ -113,6 +119,9 @@ src/
 assets/           SVG / PNG / 多尺寸 ICO
 screenshots/      README 实际运行截图
 vendor/mas/       上游脚本、许可证与来源记录
+vendor/ohook-rs/  固定 Rust DLL 源码、MIT 许可与改动记录
+build_support/   构建阶段的 PE 导出验证
+tests/hook_fixture/  隔离的 Windows DLL 测试程序
 build.rs          Windows 图标资源和管理员权限清单
 .github/workflows/build.yml  Windows 构建与检查
 ```
@@ -123,7 +132,7 @@ build.rs          Windows 图标资源和管理员权限清单
 
 ## 验证范围
 
-单元测试覆盖多窗口尺寸布局、参数校验、SKU 匹配、版本回退、票据签名参考向量、原生路由、Online KMS 选择与重试策略、续期参数/XML 及兼容引擎启动器。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
+单元测试覆盖多窗口尺寸布局、参数校验、SKU 匹配、版本回退、票据签名参考向量、原生路由、Online KMS 选择与重试策略、续期参数/XML 及兼容引擎启动器。Windows CI 另用独立 x86/x64 进程加载真实 Rust DLL 和模拟提供程序，检查 API 行为，测试不接触系统许可服务。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
 
 实机验收需覆盖：中文字体与输出、UAC、独立控制台交互与退出、各 Office 安装布局、各激活方式前后的许可证状态，以及历史 Windows 上的 KMS38。开发环境未执行任何激活操作；用户已反馈 v0.2.0 测试工作正常，具体覆盖范围待补充。
 

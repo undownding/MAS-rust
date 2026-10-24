@@ -189,6 +189,9 @@ pub fn run(_op: Operation, _options: Options, _report: &dyn Fn(&str)) -> Result<
 #[cfg(windows)]
 pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<String, String> {
     let _guard = crate::native::session::OperationGuard::acquire()?;
+    if op.args == ["/Ohook"] {
+        return crate::native::ohook::install(report);
+    }
     if op.args == ["/Ohook-Uninstall"] {
         return crate::native::ohook::uninstall(report);
     }
@@ -206,7 +209,7 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
 }
 
 pub fn is_native(op: Operation) -> bool {
-    op.args == ["/Ohook-Uninstall"]
+    matches!(op.args, ["/Ohook"] | ["/Ohook-Uninstall"])
         || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
 }
 
@@ -341,6 +344,7 @@ mod tests {
                 matches!(
                     op.args,
                     ["/HWID"]
+                        | ["/Ohook"]
                         | ["/Ohook-Uninstall"]
                         | ["/KMS38"]
                         | ["/K-Windows"]

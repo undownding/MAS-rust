@@ -161,3 +161,124 @@ mod tests {
         assert!(remove_sppc(&dir.path().join("linked-dir"), true, &|_| {}).is_err());
     }
 }
+
+pub enum Payload<'a> {
+    Bytes(&'a [u8]),
+    Link(&'a Path),
+}
+/// Stage every replacement first, then rotate old files. If rollback fails,
+/// retain the staging directory and report its location instead of deleting backups.
+pub fn deploy(dir: &Path, entries: &[(&str, Payload<'_>)]) -> Result<(), String> {
+    plain_ancestors(dir)?;
+    if !dir.exists() {
+        fs::create_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let staged = tempfile::tempdir_in(dir).map_err(|e| e.to_string())?;
+    for (name, payload) in entries {
+        if name.contains(['\\', '/']) || *name == ".." {
+            return Err("无效部署文件名".into());
+        }
+        let path = staged.path().join(name);
+        match payload {
+            Payload::Bytes(bytes) => fs::write(&path, bytes).map_err(|e| e.to_string())?,
+            Payload::Link(target) => {
+                #[cfg(windows)]
+                std::os::windows::fs::symlink_file(target, &path)
+                    .map_err(|e| format!("创建系统 DLL 链接：{e}"))?;
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(target, &path).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    let mut changed: Vec<(&str, bool, bool)> = Vec::new();
+    let result = (|| -> Result<(), String> {
+        for (name, _) in entries {
+            let path = dir.join(name);
+            let backup = staged.path().join(format!("old-{name}"));
+            let existed = match fs::symlink_metadata(&path) {
+                Ok(meta) => {
+                    if meta.is_dir() {
+                        return Err(format!("部署目标为目录：{}", path.display()));
+                    }
+                    true
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+                Err(e) => return Err(e.to_string()),
+            };
+            if existed {
+                fs::rename(&path, &backup).map_err(|e| format!("备份 {}: {e}", path.display()))?;
+            }
+            changed.push((name, existed, false));
+            fs::rename(staged.path().join(name), &path)
+                .map_err(|e| format!("部署 {}: {e}", path.display()))?;
+            changed.last_mut().unwrap().2 = true;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let mut failures = Vec::new();
+        for (name, existed, installed) in changed.into_iter().rev() {
+            let path = dir.join(name);
+            if installed && let Err(e) = remove_file(&path) {
+                failures.push(e);
+                continue;
+            }
+            if existed && let Err(e) = fs::rename(staged.path().join(format!("old-{name}")), &path)
+            {
+                failures.push(e.to_string());
+            }
+        }
+        if !failures.is_empty() {
+            return Err(format!(
+                "{error}\n恢复失败：{}\n备份保留于 {}",
+                failures.join("; "),
+                staged.keep().display()
+            ));
+        }
+        return Err(format!("{error}；已恢复原文件"));
+    }
+    Ok(())
+}
+#[cfg(test)]
+mod deploy_tests {
+    use super::*;
+    #[test]
+    fn failed_second_replacement_rolls_back_the_first() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("sppc.dll"), b"old").unwrap();
+        fs::create_dir(dir.path().join("sppcs.dll")).unwrap();
+        assert!(
+            deploy(
+                dir.path(),
+                &[
+                    ("sppc.dll", Payload::Bytes(b"new")),
+                    ("sppcs.dll", Payload::Bytes(b"system"))
+                ]
+            )
+            .is_err()
+        );
+        assert_eq!(fs::read(dir.path().join("sppc.dll")).unwrap(), b"old");
+        assert!(dir.path().join("sppcs.dll").is_dir());
+    }
+    #[test]
+    fn successful_deployment_replaces_only_named_files() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("keep.dll"), b"keep").unwrap();
+        let source = dir.path().join("original.dll");
+        fs::write(&source, b"original").unwrap();
+        #[cfg(unix)]
+        let original = Payload::Link(&source);
+        #[cfg(not(unix))]
+        let original = Payload::Bytes(b"original");
+        deploy(
+            dir.path(),
+            &[
+                ("sppc.dll", Payload::Bytes(b"new")),
+                ("sppcs.dll", original),
+            ],
+        )
+        .unwrap();
+        assert_eq!(fs::read(dir.path().join("sppcs.dll")).unwrap(), b"original");
+        assert_eq!(fs::read(dir.path().join("keep.dll")).unwrap(), b"keep");
+    }
+}

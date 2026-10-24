@@ -84,7 +84,7 @@ impl MasApp {
     }
     fn activation(&mut self, ui: &mut egui::Ui) {
         ui.heading("Windows & Office");
-        ui.label("HWID / KMS38 / Online KMS 使用 Rust 主流程；其他方式使用兼容引擎。进度与错误显示在日志页。");
+        ui.label("HWID / Ohook / KMS38 / Online KMS 使用 Rust 主流程；其他方式使用兼容引擎。进度与错误显示在日志页。");
         ui.add_space(8.0);
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
@@ -118,7 +118,7 @@ impl MasApp {
                 if category == "KMS38" {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
-                if category == "Ohook" {ui.label("卸载已使用 Rust；安装暂用兼容引擎。");}
+                if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -281,7 +281,7 @@ impl MasApp {
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("HWID / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；Ohook / TSforge 与高级工具仍使用兼容引擎；Office 修复分支仍在迁移。");
+                        ui.label("HWID / Ohook / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；TSforge 与高级工具仍使用兼容引擎；Office 修复分支仍在迁移。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");
@@ -329,6 +329,9 @@ impl MasApp {
                             }
                             if op.category == "Online KMS" && op.args.iter().any(|arg| matches!(*arg, "/K-Office" | "/K-ProjectVisio" | "/K-WindowsOffice")) {
                                 ui.label("Office 激活会清理用户许可缓存及共享/设备许可设置；可能需要重新登录 Office。");
+                            }
+                            if op.args == ["/Ohook"] {
+                                ui.label("将安装 Office 许可和 Rust DLL，并清理用户许可缓存。请先关闭 Office；可能需要重新登录。");
                             }
                             if op.legacy {
                                 ui.colored_label(
