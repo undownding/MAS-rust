@@ -280,6 +280,7 @@ pub enum Plan {
     AlreadyPermanent,
     Evaluation,
     Legacy,
+    LegacyNative { method: Method },
     Activate { sku: Uuid, method: Method },
 }
 /// Evaluation and legacy branches remain explicit, so the dispatcher can
@@ -301,7 +302,8 @@ pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
         return Ok(Plan::AlreadyPermanent);
     }
     if context.build < 9600 {
-        return Ok(Plan::Legacy);
+        super::crypto::Version::detect(context.build).map_err(|e| e.to_string())?;
+        return Ok(Plan::LegacyNative { method });
     }
     let channel = if method == Method::Kms4k {
         Channel::KmsClient
@@ -348,8 +350,11 @@ fn activate_inner(
     }
     match plan(&context, option)? {
         Plan::Evaluation => super::evaluation_runtime::activate(&context, report).map(Some),
+        Plan::LegacyNative { method } => {
+            super::legacy_runtime::activate(&context, method, option == 0, report).map(Some)
+        }
         Plan::Legacy => {
-            report("此 Windows 存储版本尚未接入原生激活，使用兼容引擎。");
+            report("旧版 Windows 评估分支尚未接入原生激活，使用兼容引擎。");
             Ok(None)
         }
         Plan::AlreadyPermanent => Ok(Some(
@@ -478,7 +483,32 @@ mod tests {
         context.edition = "Enterprise".into();
         assert!(matches!(plan(&context, 0).unwrap(), Plan::AlreadyPermanent));
         context.permanently_activated = false;
-        context.build = 7601;
-        assert!(matches!(plan(&context, 0).unwrap(), Plan::Legacy));
+        for build in [6000, 6002, 7600, 7601, 7602, 9200] {
+            context.build = build;
+            assert!(matches!(
+                plan(&context, 0).unwrap(),
+                Plan::LegacyNative {
+                    method: Method::ZeroCid
+                }
+            ));
+            assert!(matches!(
+                plan(&context, 3).unwrap(),
+                Plan::LegacyNative {
+                    method: Method::Kms4k
+                }
+            ));
+            if build < 9200 {
+                assert!(plan(&context, 1).is_err());
+            } else {
+                assert!(matches!(
+                    plan(&context, 1).unwrap(),
+                    Plan::LegacyNative {
+                        method: Method::StaticCid
+                    }
+                ));
+            }
+        }
+        context.build = 7000;
+        assert!(plan(&context, 0).is_err());
     }
 }

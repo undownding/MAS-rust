@@ -27,6 +27,8 @@ mod key_install;
 mod legacy_key_runtime;
 #[cfg_attr(not(test), allow(dead_code))]
 mod legacy_random;
+#[cfg(windows)]
+mod legacy_runtime;
 mod legacy_windows;
 #[cfg_attr(not(test), allow(dead_code))]
 mod pkey_config;

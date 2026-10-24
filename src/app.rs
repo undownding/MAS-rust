@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows / Office / ESU / KMS Host：build 9600+ 使用 Rust；APPX 仅适用 8/8.1。组合入口同样使用 Rust；评估版使用原生重置/联网激活，旧版存储仍兼容。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows 单项普通版已接入旧版存储后端；Office / ESU / Host / 组合仍以 build 9600+ 为原生范围。旧版评估版仍兼容，GUI 最低系统要求不变。原生激活待实机验收，重置不等于激活。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }

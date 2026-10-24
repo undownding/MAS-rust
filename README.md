@@ -11,10 +11,10 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.6.0-dev.11：重置与恢复后端接入 Vista/Win7 双文件和 Win8 单文件存储布局，支持缺失副本创建与撤销恢复；GUI 最低 Windows 版本不变，旧版后端仍待实机验收。**
+**v0.6.0-dev.12：Windows 单项普通版接入旧版原生密钥安装与激活分派；旧版评估版仍兼容。GUI 最低 Windows 版本不变，旧版后端仍待实机验收。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；旧版存储仍转入兼容引擎，原生失败后不会自动再运行兼容激活。重置与备份恢复也使用 Rust。旧存储及部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；Windows 单项普通版已连接旧版存储后端；旧版评估版及其他旧版范围仍转入兼容引擎，原生失败后不会自动再运行兼容激活。重置与备份恢复也使用 Rust。旧存储及部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 
 ## 界面预览
@@ -37,7 +37,7 @@ TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口�
 | --- | --- |
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
 | Ohook / 卸载 | Rust 许可准备、DLL 构建/部署、用户配置和卸载恢复 |
-| TSforge Windows 单项 | Rust：build 9600+；普通版支持 SCID/ZCID/KMS4k，评估版独立重置/联网激活；旧存储兼容 |
+| TSforge Windows 单项 | Rust：普通版含 Vista/Win7/Win8 存储后端；SCID 仅 Win8+；现代评估版原生，旧版评估版兼容 |
 | TSforge ESU 单项 | Rust：build 9600+；旧版兼容；按本机 ESU 许可证和版本/UBR 筛选，支持 SCID/ZCID |
 | TSforge Windows KMS Host | Rust：build 9600+；旧版兼容；CSVLK 许可准备、SCID/ZCID 和主机计数处理 |
 | TSforge Office KMS Host | Rust：现代存储；按固定目录选择本机已有 2010–2024 主机许可，支持 SCID/ZCID；旧存储兼容 |
@@ -78,6 +78,8 @@ Windows 单项的“默认”在 build 26100+ 使用 KMS4k，较旧版本使用 
 ESU 单项的“默认”在 build 26100+ 选择 StaticCID，较旧版本选择 ZeroCID；ESU 不支持 KMS4k。预检查未确认联网时，显式 StaticCID 和需要联网的 ESU Auto 会在密钥安装前停止。预检查使用上游对应的 DNS 解析与 Windows Network List Manager，不保证激活服务实际可达。
 
 ESU 仅处理本机已有、适用于当前版本的许可证，家庭版等新增支持版本还有 build 19045 的修订号门槛。逐项记录成功与失败；全部成功时，对适用产品调用系统自带的 ClipESUConsumer/ClipESU 后处理。许可状态不代表所有年份都能通过 Windows Update 获取更新。Windows/ESU 激活执行后会清理两个固定 SPP 持久状态值并提交任务重评估；这些值不在许可存储备份范围内，重评估失败会单独报告。
+
+Windows 单项的旧版普通系统分支按本机许可证选择密钥：Vista 使用固定目录，Win7 KMS4k 使用固定 GVLK，Win7 ZeroCID 和 Win8 使用生成密钥；StaticCID 仅适用于 Win8 及以上。固定密钥安装核对 ID、通道和末五位；生成 PKEY2005 保留卸载前联合备份。安装后的激活失败不自动撤销 SLC/WMI 操作，也不重跑脚本。此接入不表示当前 GUI 能在 Vista/7/8 上运行；旧版实机兼容性与完整激活结果尚未验收。
 
 ### Windows 评估版
 
@@ -127,7 +129,7 @@ DLL 基于固定版本的 [ohook-rs](https://github.com/massgravel/ohook-rs/tree
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.6.0-dev.11 的 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.6.0-dev.12 的 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 
