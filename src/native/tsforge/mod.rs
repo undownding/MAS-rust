@@ -2,6 +2,7 @@
 //! Reset is native; activation and token modification routes are still being migrated.
 mod binary;
 mod crypto;
+mod paired_store;
 mod physical;
 mod reset;
 mod service;

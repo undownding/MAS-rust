@@ -21,7 +21,7 @@ fn digest(bytes: &[u8]) -> String {
         .map(|v| format!("{v:02x}"))
         .collect()
 }
-fn read_all(file: &mut File) -> io::Result<Vec<u8>> {
+pub(super) fn read_all(file: &mut File) -> io::Result<Vec<u8>> {
     file.seek(SeekFrom::Start(0))?;
     let mut bytes = Vec::new();
     file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
@@ -30,7 +30,7 @@ fn read_all(file: &mut File) -> io::Result<Vec<u8>> {
     }
     Ok(bytes)
 }
-fn write_all(file: &mut File, bytes: &[u8]) -> io::Result<()> {
+pub(super) fn write_all(file: &mut File, bytes: &[u8]) -> io::Result<()> {
     file.seek(SeekFrom::Start(0))?;
     file.write_all(bytes)?;
     file.set_len(bytes.len() as u64)?;
@@ -41,6 +41,9 @@ fn write_all(file: &mut File, bytes: &[u8]) -> io::Result<()> {
     Ok(())
 }
 fn open_target(path: &Path) -> io::Result<File> {
+    open_target_access(path, false)
+}
+pub(super) fn open_target_access(path: &Path, delete: bool) -> io::Result<File> {
     if !path.is_absolute() {
         return Err(invalid("store path must be absolute"));
     }
@@ -51,7 +54,12 @@ fn open_target(path: &Path) -> io::Result<File> {
     {
         use std::os::windows::fs::OpenOptionsExt;
         options.share_mode(0).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+        if delete {
+            options.access_mode(0xC0010000);
+        } // GENERIC_READ | GENERIC_WRITE | DELETE
     }
+    #[cfg(not(windows))]
+    let _ = delete;
     let file = options.open(path)?;
     let meta = file.metadata()?;
     if !meta.is_file() || meta.len() > MAX_BYTES {
@@ -88,7 +96,7 @@ fn save(path: &Path, bytes: &[u8]) -> io::Result<()> {
     file.write_all(bytes)?;
     file.sync_all()
 }
-fn sync_directory(path: &Path) -> io::Result<()> {
+pub(super) fn sync_directory(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
         File::open(path)?.sync_all()?;
@@ -113,8 +121,8 @@ pub struct Transaction {
     journal: File,
 }
 
-/// Non-file state participating in a store transaction (for example registry
-/// values). Preparation must durably save its originals in `backup`, validate
+/// State outside the primary file set (for example registry values or a legacy
+/// mirror). Preparation must durably save its originals in `backup`, validate
 /// current state, and never modify live state. Commit and rollback must verify
 /// their writes. Caller holds the licensing mutex and keeps SPP stopped.
 pub trait Participant {
