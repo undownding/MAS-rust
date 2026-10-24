@@ -210,10 +210,17 @@ pub fn run(
         }
     }
     if scope.office() {
+        let mut preparation_ok = true;
         if !renew_only {
             match super::office::prepare_kms(&l, scope, options.no_edition_change, report) {
-                Ok(failures) => errors.extend(failures),
-                Err(e) => errors.push(format!("Office 许可准备失败：{e}")),
+                Ok(failures) => {
+                    preparation_ok = failures.is_empty();
+                    errors.extend(failures);
+                }
+                Err(e) => {
+                    preparation_ok = false;
+                    errors.push(format!("Office 许可准备失败：{e}"));
+                }
             }
         }
         let mut found = 0;
@@ -239,6 +246,13 @@ pub fn run(
                     report(&format!("保留非 KMS Office 许可证：{name}"));
                 }
             }
+        }
+        if found > 0
+            && !renew_only
+            && preparation_ok
+            && let Err(e) = super::office_cleanup::clear_blocks(false, report)
+        {
+            errors.push(format!("Office 缓存清理失败：{e}"));
         }
         if found == 0 && !renew_only {
             errors.push(format!("Office：没有已安装的批量许可 KMSCLIENT 产品（发现 {unsupported} 个其他许可）。请检查上方许可准备日志；复杂修复可使用完整版兼容菜单。"));

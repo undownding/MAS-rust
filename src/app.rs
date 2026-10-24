@@ -118,6 +118,7 @@ impl MasApp {
                 if category == "KMS38" {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
+                if category == "Ohook" {ui.label("卸载已使用 Rust；安装暂用兼容引擎。");}
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -325,6 +326,9 @@ impl MasApp {
                                 } else {
                                     "成功后创建 SYSTEM 续期任务（每 6 小时）"
                                 });
+                            }
+                            if op.category == "Online KMS" && op.args.iter().any(|arg| matches!(*arg, "/K-Office" | "/K-ProjectVisio" | "/K-WindowsOffice")) {
+                                ui.label("Office 激活会清理用户许可缓存及共享/设备许可设置；可能需要重新登录 Office。");
                             }
                             if op.legacy {
                                 ui.colored_label(

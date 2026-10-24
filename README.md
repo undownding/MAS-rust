@@ -11,7 +11,7 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.4.0-dev：在原生 Online KMS 基础上新增 Office C2R 许可转换与 MSI 批量许可准备。**
+**v0.4.0-dev.2：新增 Ohook 原生卸载、Office 缓存清理及 GUI / 自动续期互斥。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
 Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
@@ -29,7 +29,7 @@ Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版�
 | 功能 | 入口 |
 | --- | --- |
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
-| Ohook / 卸载 | GUI |
+| Ohook / 卸载 | 安装仍为兼容引擎；卸载已迁移 Rust |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX / 重置 | GUI，支持默认、SCID、ZCID、KMS4k 方法 |
 | Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 支持 C2R 转换及 MSI 批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
@@ -55,16 +55,21 @@ Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版�
 4. 非交互任务完成后到“许可证”查询状态；完整交互菜单仍在独立窗口运行。
 5. “日志”页可复制进度与任务结果。兼容引擎非交互日志保存在 `%LOCALAPPDATA%\MAS-Rust\logs`；交互菜单输出在独立窗口显示。
 
+### Ohook 原生卸载
+
+“卸载 Ohook”直接清除 Office 目录中的 hook 文件、恢复保存的原始 OSPPC，并清理用户及默认配置中的 Resiliency 和 Office 横幅设置，不运行脚本。不卸载 Office 产品密钥；文件被占用或出现冲突原 DLL 时会报错，关闭 Office 后可重试。安装路径及 DLL 的 Rust 重写仍在进行。
+
 ### Online KMS 原生流程
 
 - Windows 根据 SKU 和系统已有 Activation ID 选择 GVLK；已有永久许可或 KMS38 时保留现状。
 - Office / Project / Visio 原生入口读取 C2R 产品注册表，按固定上游表将支持的 Retail 产品映射至 Volume，直接导入本机许可文件并安装密钥；勾选“禁止更改版本”会跳过此转换。MSI 仅准备已安装的批量许可产品，不转换 MSI Retail。上游旧续期任务卸载仍从兼容菜单进入。
 - 高级选项可指定服务器与端口；留空使用固定上游服务器列表并重试。指定主机后只连接该主机，失败不会回退到公共服务器。所有尝试失败后恢复原主机与端口；已安装的 GVLK 不会自动还原。
 - 默认在成功后通过 Task Scheduler COM 注册 SYSTEM 续期任务，每 6 小时运行一次；可勾选“不创建自动续期任务”。续期只操作已有 KMS 许可证，不安装密钥或更改版本。
+- 手动 Office 激活在许可准备成功后清理用户许可缓存、共享/设备许可和 OEM 屏蔽设置，可能需要重新登录 Office；后台续期不执行此清理。
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.4.0-dev 的 Office 转换，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.4.0-dev 系列的 Office 转换、缓存清理及 Ohook 卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 
@@ -91,7 +96,7 @@ cargo build --release --locked --target x86_64-pc-windows-gnu
 
 ## 执行方式与已知限制
 
-GUI 同时只允许一个任务。运行中不允许关闭主窗口，以保持内嵌脚本生命周期。原生流程依据 WMI 许可状态判断结果；兼容引擎退出码不代表激活成功，完成后应查询实际许可证状态。
+GUI 同时只允许一个任务；Windows 全局互斥锁还会阻止其他窗口和后台续期同时操作许可证。运行中不允许关闭主窗口，以保持内嵌脚本生命周期。原生流程依据 WMI 许可状态判断结果；兼容引擎退出码不代表激活成功，完成后应查询实际许可证状态。
 
 脚本内嵌在 EXE 中，运行时不下载引擎；引擎本身的联机操作和资源下载沿用上游逻辑。兼容脚本执行时写入 `%LOCALAPPDATA%\MAS-Rust\engine-runs` 中的独占目录，退出后清理。该目录避开上游禁止使用的 Temp 子目录。所有传入脚本的参数均来自固定选项，不接受任意命令输入。不要在 Windows ARM64 的 x64 仿真环境运行此构建：上游的跨架构重启流程尚未验证。
 

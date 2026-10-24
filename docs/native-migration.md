@@ -22,7 +22,7 @@
 | 通用许可证管理 | `dk_actids`、`dk_inskey`、`dk_refresh`、`dk_act` | WMI 查询、安装密钥、刷新状态、激活、配置 KMS | 使用 COM/WMI 直接调用，不运行 PowerShell / WMIC / cscript |
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
-| Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | 尚未迁移，显式兼容后端 |
+| Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | 卸载文件和注册表路径已迁移；安装及 hook DLL 仍在迁移 |
 | TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 尚未迁移，显式兼容后端 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
@@ -53,7 +53,7 @@
 
 v0.4.0-dev 新增 `office.rs` / `office_catalog.rs` / `registry.rs`：原生读取两种注册表视图中的 C2R 产品信息，按上游表转换许可产品，直接通过 WMI 导入缺失的 XRM 文件并安装密钥，维护 OSPPReady 和旧 Office 的 ProductReleaseIds。导入前读取并解码整组文件，安装顺序为发行证书、产品许可、pkeyconfig。MSI 根据注册信息及 InstalledPackages 识别产品，只安装原生受支持的批量许可密钥。
 
-仍未迁移完整的 Office 订阅缓存/屏蔽清理、冲突旧密钥清理、UWP 许可准备、上游旧任务清理及全部故障修复分支，保留完整兼容菜单。GUI 与后台任务属于不同进程，运行手动激活时应避免同时运行续期任务。此版本尚无 Windows 实机验收结果。
+Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密钥清理、UWP 许可准备、上游旧任务清理及全部故障修复分支，保留完整兼容菜单。`session.rs` 用 Windows 全局命名互斥量串行化 GUI、许可证操作和后台续期；后台任务遇到占用会记录错误并等候下一次计划触发。此版本尚无 Windows 实机验收结果。
 
 ### 尚未达到上游等价覆盖的地方
 
@@ -96,3 +96,12 @@ Ohook 还包括独立 hook DLL，完整 Rust 实现需要兼容 DLL 导出与转
 - [ ] 更新 README、截图、构建产物与来源记录，并用与上述范围一致的测试和 Windows 实测验收。
 
 2026-10-24：本轮接入 Office 转换及 MSI 许可准备。25 项本地单元测试通过，Linux/Windows Clippy 通过；尚无新增路径的 Windows 实机证据。
+
+
+### v0.4.0-dev.2：Ohook 卸载与 Office 清理
+
+`ohook.rs` / `hook_files.rs` 接管 `/Ohook-Uninstall`，覆盖注册表安装路径与标准 Office 目录、SPP hook 清理、OSPP 原 DLL 恢复。文件锁与冲突原 DLL 会保留并报错，重跑可继续；不跟随目录重解析点递归删除。保留原始备份冲突的处理与上游强制覆盖不同，避免静默覆盖未知文件。
+
+`office_cleanup.rs` 实现用户/机器许可缓存、共享/设备/OEM 设置清理，并在卸载时移除用户和默认配置的 Resiliency。离线用户配置使用 RegLoadKey、临时挂载名称及权限恢复，显式关闭句柄并卸载；失败逐项报告。没有将 RegLoadAppKey 当作通用 NTUSER 加载器，其安全描述符限制见 [Microsoft 文档](https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regloadappkeyw)。
+
+新增临时文件测试覆盖 DLL 恢复、冲突备份保护及符号链接边界；Windows CI 另测独立 HKCU 测试树的删除边界和互斥锁的竞争/释放。自动检查不等价于已安装 Office 的卸载和离线用户配置实测。上方总清单仍未完成。

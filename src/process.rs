@@ -27,6 +27,8 @@ pub fn execute(
         return Err("操作已取消".into());
     }
     #[cfg(windows)]
+    let _guard = crate::native::session::OperationGuard::acquire()?;
+    #[cfg(windows)]
     let result = crate::native::licensing::execute(product, &action, &|_| {});
     #[cfg(not(windows))]
     let result: Result<String, String> = {

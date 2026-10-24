@@ -154,6 +154,7 @@ pub fn headless(args: &[String]) -> i32 {
     let log = std::cell::RefCell::new(String::new());
     let result = (|| -> Result<String, String> {
         let (scope, server, port) = kms::parse_renewal_args(args)?;
+        let _guard = super::session::OperationGuard::acquire()?;
         online::run(
             scope,
             &Options {

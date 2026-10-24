@@ -25,3 +25,13 @@ mod office;
 mod office_catalog;
 #[cfg(windows)]
 mod registry;
+
+#[cfg(any(windows, test))]
+mod hook_files;
+#[cfg(windows)]
+mod office_cleanup;
+#[cfg(windows)]
+pub mod ohook;
+
+#[cfg(windows)]
+pub mod session;
