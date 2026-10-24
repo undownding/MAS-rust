@@ -1,0 +1,24 @@
+[package]
+name = "mas-rust"
+version = "0.1.0"
+edition = "2024"
+description = "Rust desktop interface for Microsoft Activation Scripts"
+license = "GPL-3.0-only"
+build = "build.rs"
+
+[dependencies]
+eframe = { version = "0.37.0", default-features = false, features = ["glow", "default_fonts", "system_fonts", "x11", "wayland"] }
+image = { version = "0.25.8", default-features = false, features = ["png"] }
+thiserror = "2.0.17"
+tempfile = "3.27"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell"] }
+
+[build-dependencies]
+winresource = "0.1.23"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
