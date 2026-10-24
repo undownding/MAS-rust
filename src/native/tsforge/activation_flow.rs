@@ -78,6 +78,7 @@ pub fn run(backend: &mut impl Backend, sku: Uuid, method: Method) -> Result<Stri
 pub struct Native<'a> {
     pub report: &'a dyn Fn(&str),
     pub cleanup_build: Option<u32>,
+    pub required_channel: Option<&'a str>,
 }
 #[cfg(windows)]
 impl Backend for Native<'_> {
@@ -103,7 +104,16 @@ impl Backend for Native<'_> {
     }
     fn prepare(&mut self, sku: Uuid) -> Result<Prepared, String> {
         let context = super::sl::Context::open().map_err(|e| e.to_string())?;
-        super::generated_key::prepare(&context, sku).map_err(|e| e.to_string())
+        let prepared = super::generated_key::prepare(&context, sku).map_err(|e| e.to_string())?;
+        if let Some(channel) = self.required_channel
+            && !prepared.product.channel.eq_ignore_ascii_case(channel)
+        {
+            return Err(format!(
+                "所选产品通道 {} 与要求的 {channel} 不一致，未安装密钥",
+                prepared.product.channel
+            ));
+        }
+        Ok(prepared)
     }
     fn install(&mut self, prepared: &Prepared) -> Result<(), String> {
         if let Some(build) = self.cleanup_build.take() {

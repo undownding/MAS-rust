@@ -345,6 +345,7 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
             })?;
             report(&format!("原生 Rust TSforge：{sku} · {method:?}"));
             let mut backend = activation_flow::Native {
+                required_channel: None,
                 report,
                 cleanup_build: if method == Method::Kms4k {
                     Some(context.build)

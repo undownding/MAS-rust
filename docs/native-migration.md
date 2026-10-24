@@ -378,3 +378,12 @@ GUI 范围标签、README、版本号同步至 dev.4；更新真实 Linux 预览
 新增 `reevaluation.rs`：预先从系统 sppc.dll 解析 SLpTriggerServiceWorker，清除 NetworkService 的 PersistedSystemState 下 State/SuppressRulesEngine 两个固定值、回读验证，暂停 SPP 后提交 reeval 请求，并复用服务恢复协调器。请求是异步的，不用它宣称激活成功；无论之前的激活结果成功或失败，都保留原结果/备份信息，重评估错误另行合并。此处清理不在许可存储备份范围内。
 
 ESU 按钮现已接入现代原生后端，旧存储仍明确转兼容；Windows/ESU 的原生失败不会自动再运行兼容激活。更新版本、README 和真实预览截图，构建 dev.5 Windows 本地测试包。新增联网决策、错误合并测试，以及 Windows 专用的只读 NLM 查询/系统导出加载测试；不执行真实重评估或激活。123 项本地测试及双平台 Clippy 通过。Windows 入口/清理 CI 40120110681 已成功，ESU 发现 CI 40120508435 仍在运行，新联网/SPP 调用还待本次 Windows CI 验证。
+
+
+### Windows KMS Host 许可准备与执行后端（进行中）
+
+新增 `host_licenses.rs`：build 10586+ 从当前版本 SKU 目录读取 CSVLK 文件，先完整读取/解码并解析校验所有文件，再允许调用 InstallLicense。保持签名 XML 原文，不重写命名空间或空白；支持 UTF-8/UTF-16，拒绝无效目录、DTD、损坏 XML、超出 256 文件或合计 64 MiB 的输入。按文件名排序，仅处理当前版本目录的 CSVLK XRM 文件，较旧构建不额外导入。
+
+新增 `windows_host.rs`，连接现代系统上下文、Auto 联网判断、CSVLK 许可导入、KMS Host 产品选择和既有原生安装/SCID/ZeroCID/Host Charge 后端。KMS4k 明确拒绝；旧存储保留兼容准备结果。生成密钥准备增加可选的通道约束，Host 必须为 Volume:CSVLK 才能安装，Windows/ESU 路径不额外限制。导入失败保留已导入数量，后续失败说明许可准备已发生，不声称撤销已安装的 XRM 许可。最终复用 SPP 重评估与错误合并。
+
+126 项本地测试和双平台 Clippy 通过，新增当前版本文件选择、顺序/编码保留、整组损坏拒绝、导入失败阶段测试。Windows 专用测试只读取本机 CSVLK 文件，不调用导入、激活或 Host Charge。ESU 后端 CI 40120508435 已成功；dev.5 联网/SPP CI 40120868061 仍在运行。Host GUI 入口尚未切换，本轮无界面或测试包变化。

@@ -169,6 +169,7 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
             product.name, product.id
         ));
         let mut backend = activation_flow::Native {
+            required_channel: None,
             report,
             cleanup_build: None,
         };
