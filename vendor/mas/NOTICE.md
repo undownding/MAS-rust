@@ -30,3 +30,7 @@ LibTSforge classes in that same GPL-3.0 source.
 `native/tsforge-hwid.bin` is the 38-byte `UniversalHWIDBlock` constant
 from the same pinned LibTSforge source, reproduced by
 `tools/extract_native_data.py`; it is not hardware data collected from a user.
+
+`native/tsforge-activation-mac.bin` is the public 64-byte ActivationWs
+MacKey constant from the pinned script, extracted by the same tool. It is
+protocol data from upstream, not an account credential or locally obtained secret.

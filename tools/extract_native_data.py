@@ -61,3 +61,8 @@ section = current.split('public static readonly byte[] UniversalHWIDBlock =', 1)
 blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
 assert len(blob) == 38
 (DEST / 'tsforge-hwid.bin').write_bytes(blob)
+
+section = current.split('MacKey = new byte[64] {', 1)[1].split('};', 1)[0]
+blob = bytes(int(value) for value in re.findall(r'\d+', section))
+assert len(blob) == 64
+(DEST / 'tsforge-activation-mac.bin').write_bytes(blob)

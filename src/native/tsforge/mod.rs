@@ -43,3 +43,11 @@ mod phone;
 
 #[cfg(windows)]
 mod phone_runtime;
+
+mod activation_ws;
+
+#[cfg(windows)]
+mod activation_http;
+
+#[cfg(windows)]
+mod static_cid;
