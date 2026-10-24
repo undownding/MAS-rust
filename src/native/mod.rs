@@ -18,3 +18,10 @@ pub mod kms;
 pub mod online;
 #[cfg(windows)]
 pub mod renewal;
+
+#[cfg(windows)]
+mod office;
+#[cfg(any(windows, test))]
+mod office_catalog;
+#[cfg(windows)]
+mod registry;

@@ -89,7 +89,7 @@ impl MasApp {
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
                 &mut self.options.no_edition_change,
-                "不自动更改 Windows 版本（HWID / KMS / KMS38）",
+                "不自动更改 Windows / Office 版本（HWID / KMS / KMS38）",
             );
             ui.checkbox(
                 &mut self.options.no_renewal,
@@ -119,7 +119,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Online KMS" {
-                    ui.label("原生支持 Windows 与已安装的 Office 批量许可。Office Retail 转换、上游旧续期任务卸载使用完整版兼容菜单；高级选项可指定服务器和端口。");
+                    ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
                 if category == "工具箱" { ui.label("打开完整上游菜单：查询状态、更改 Windows / Office 版本、故障排查、提取 $OEM$、帮助及其他高级设置。"); }
                 ui.horizontal_wrapped(|ui| {
@@ -280,7 +280,7 @@ impl MasApp {
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("HWID / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；Office 转换、Ohook / TSforge 与高级工具仍使用兼容引擎。");
+                        ui.label("HWID / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；Ohook / TSforge 与高级工具仍使用兼容引擎；Office 修复分支仍在迁移。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");

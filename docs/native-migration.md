@@ -24,7 +24,7 @@
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | 尚未迁移，显式兼容后端 |
 | TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 尚未迁移，显式兼容后端 |
-| Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；Office 通道转换仍为兼容后端 |
+| Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
 ### HWID / KMS38
@@ -51,7 +51,9 @@
 
 `src/native/renewal.rs` 通过 Task Scheduler COM 注册 SYSTEM 任务，无 PowerShell / cmd / schtasks。任务每 6 小时运行 `%ProgramFiles%\MAS-Rust\Renewal` 中按内容哈希命名的程序副本，使用 `--kms-renew` 无界面入口；只续期已有 KMSCLIENT 许可，不安装密钥。注册/删除前检查任务来源标记，避免覆盖同名无关任务。卸载保留可能仍在运行的副本和日志。
 
-当前未迁移 Office Retail → Volume 转换、未安装的 Office 批量许可部署、上游旧任务清理及全部故障修复分支，保留完整兼容菜单。GUI 与后台任务属于不同进程，运行手动激活时应避免同时运行续期任务。此版本尚无 Windows 实机验收结果。
+v0.4.0-dev 新增 `office.rs` / `office_catalog.rs` / `registry.rs`：原生读取两种注册表视图中的 C2R 产品信息，按上游表转换许可产品，直接通过 WMI 导入缺失的 XRM 文件并安装密钥，维护 OSPPReady 和旧 Office 的 ProductReleaseIds。导入前读取并解码整组文件，安装顺序为发行证书、产品许可、pkeyconfig。MSI 根据注册信息及 InstalledPackages 识别产品，只安装原生受支持的批量许可密钥。
+
+仍未迁移完整的 Office 订阅缓存/屏蔽清理、冲突旧密钥清理、UWP 许可准备、上游旧任务清理及全部故障修复分支，保留完整兼容菜单。GUI 与后台任务属于不同进程，运行手动激活时应避免同时运行续期任务。此版本尚无 Windows 实机验收结果。
 
 ### 尚未达到上游等价覆盖的地方
 
@@ -59,7 +61,7 @@
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- Ohook、TSforge、Office Retail 转换和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
+- Ohook、TSforge、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -78,3 +80,19 @@ Ohook 还包括独立 hook DLL，完整 Rust 实现需要兼容 DLL 导出与转
 ## 用户验证反馈
 
 2026-10-24：用户反馈 v0.2.0 测试工作正常。未提供具体系统构建号、激活方式及 Office 版本，因此保留未验证组合的说明。
+
+
+## 完整迁移验收清单（目标保持进行中）
+
+以下缺口均属于目标范围，不能以已有原生路由或编译通过代替完成：
+
+- [ ] HWID：地区、订阅 SKU、IdentityCRL、修复及重试分支；票据导入实测。
+- [ ] KMS38：ACL、Server Core、保护与卸载完整流程；兼容构建实测。
+- [ ] Online KMS：UWP、订阅/旧密钥清理、免费产品状态处理、旧任务迁移/清理、跨进程互斥；转换与续期实测。
+- [ ] Ohook：完整检测、密钥/许可、Rust hook DLL（x86/x64）、注册表/订阅处理、安装与卸载恢复；各安装布局实测。
+- [ ] TSforge：SL API、产品密钥配置、物理存储/令牌解析与序列化、密码学、备份恢复、SCID/ZCID/KMS4k；覆盖现有全部按钮及故障恢复。
+- [ ] 高级工具：状态、Windows/Office 版本切换、组件排障与修复、OEM 导出和帮助入口，逐项替代完整脚本菜单。
+- [ ] 删除已无必要的运行时脚本后端；查明剩余外部程序属于系统组件还是尚未迁移的代码。
+- [ ] 更新 README、截图、构建产物与来源记录，并用与上述范围一致的测试和 Windows 实测验收。
+
+2026-10-24：本轮接入 Office 转换及 MSI 许可准备。25 项本地单元测试通过，Linux/Windows Clippy 通过；尚无新增路径的 Windows 实机证据。

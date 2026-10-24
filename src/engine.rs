@@ -111,7 +111,7 @@ pub const OPERATIONS: &[Operation] = &[
         legacy: false,
     },
     Operation {
-        title: "完整版兼容菜单（Office 转换 / 旧任务卸载）",
+        title: "完整版兼容菜单（Office 修复 / 旧任务卸载）",
         category: "Online KMS",
         args: &[],
         legacy: false,

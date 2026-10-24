@@ -210,6 +210,12 @@ pub fn run(
         }
     }
     if scope.office() {
+        if !renew_only {
+            match super::office::prepare_kms(&l, scope, options.no_edition_change, report) {
+                Ok(failures) => errors.extend(failures),
+                Err(e) => errors.push(format!("Office 许可准备失败：{e}")),
+            }
+        }
         let mut found = 0;
         let mut unsupported = 0;
         for (class, app) in office_providers(&l)? {
@@ -235,7 +241,7 @@ pub fn run(
             }
         }
         if found == 0 && !renew_only {
-            errors.push(format!("Office：没有已安装的批量许可 KMSCLIENT 产品（发现 {unsupported} 个其他许可）。Retail→Volume 转换仍需完整版兼容菜单。"));
+            errors.push(format!("Office：没有已安装的批量许可 KMSCLIENT 产品（发现 {unsupported} 个其他许可）。请检查上方许可准备日志；复杂修复可使用完整版兼容菜单。"));
         } else if found == 0 {
             skipped += 1;
         }

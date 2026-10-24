@@ -1,6 +1,6 @@
 [package]
 name = "mas-rust"
-version = "0.3.0"
+version = "0.4.0-dev"
 edition = "2024"
 description = "Rust desktop interface for Microsoft Activation Scripts"
 license = "GPL-3.0-only"

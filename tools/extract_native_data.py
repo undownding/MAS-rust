@@ -41,3 +41,7 @@ for line in section.splitlines():
         servers.extend(line[len('set "srvlist='):-1].replace('%srvlist%', '').replace('%-%', '').split())
 assert len(servers) == 15
 (DEST / 'kms-servers.txt').write_text('\n'.join(servers) + '\n')
+
+section = current.split('\n:msiofficedata\n', 1)[1].split(') do (', 1)[0]
+rows = ['\t'.join(line.split('_')) for line in section.splitlines() if re.match(r'^(14|15|16)_[0-9a-f]{8}-', line)]
+(DEST / 'office-msi.tsv').write_text('\n'.join(rows) + '\n')

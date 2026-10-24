@@ -1,0 +1,148 @@
+14	4d463c2c-0505-4626-8cdb-a4da82e2d8ed	0015	AccessR
+14	745fb377-0a59-4ca9-b9a9-c359557a2c4e	001C	AccessRuntimeR
+14	95ab3ec8-4106-4f9d-b632-03c019d1d23f	0015	AccessVL
+14	4eaff0d0-c6cb-4187-94f3-c7656d49a0aa	0016	ExcelR	[HSExcelR]
+14	71dc86ff-f056-40d0-8ffb-9592705c9b76	0016	ExcelVL
+14	7004b7f0-6407-4f45-8eac-966e5f868bde	00BA	GrooveR
+14	fdad0dfa-417d-4b4f-93e4-64ea8867b7fd	00BA	GrooveVL
+14	7b7d1f17-fdcb-4820-9789-9bec6e377821	0013	HomeBusinessR	[HomeBusinessDemoR]
+14	19316117-30a8-4773-8fd9-7f7231f4e060	011E	HomeBusinessSubR
+14	09e2d37e-474b-4121-8626-58ad9be5776f	002F	HomeStudentR	[HomeStudentDemoR]
+14	ef1da464-01c8-43a6-91af-e4e5713744f9	0044	InfoPathR
+14	85e22450-b741-430c-a172-a37962c938af	0044	InfoPathVL
+14	14f5946a-debc-4716-babc-7e2c240fec08	000F	MondoR
+14	533b656a-4425-480b-8e30-1a2358898350	000F	MondoVL
+14	c1ceda8b-c578-4d5d-a4aa-23626be4e234	003D	ProfessionalR	[OEM-SingleImage]Exception
+14	3f7aa693-9a7e-44fc-9309-bb3d8e604925	00A1	OneNoteR	[HSOneNoteR]
+14	6860b31f-6a67-48b8-84b9-e312b3485c4b	00A1	OneNoteVL
+14	fbf4ac36-31c8-4340-8666-79873129cf40	001A	OutlookR
+14	a9aeabd8-63b8-4079-a28e-f531807fd6b8	001A	OutlookVL
+14	acb51361-c0db-4895-9497-1831c41f31a6	0033	PersonalR	[PersonalDemoR,PersonalPrepaidR]
+14	133c8359-4e93-4241-8118-30bb18737ea0	0018	PowerPointR	[HSPowerPointR]
+14	38252940-718c-4aa6-81a4-135398e53851	0018	PowerPointVL
+14	8b559c37-0117-413e-921b-b853aeb6e210	0014	ProfessionalR	[ProfessionalAcadR,ProfessionalDemoR]
+14	725714d7-d58f-4d12-9fa8-35873c6f7215	003B	ProjectProR	[ProjectProMSDNR]
+14	4d06f72e-fd50-4bc2-a24b-d448d7f17ef2	011F	ProjectProSubR
+14	1cf57a59-c532-4e56-9a7d-ffa2fe94b474	003B	ProjectProVL
+14	688f6589-2bd9-424e-a152-b13f36aa6de1	003A	ProjectStdR
+14	11b39439-6b93-4642-9570-f2eb81be2238	003A	ProjectStdVL
+14	71af7e84-93e6-4363-9b69-699e04e74071	0011	ProPlusR	[ProPlusAcadR,ProPlusMSDNR,Sub4R]
+14	e98ef0c0-71c4-42ce-8305-287d8721e26c	011D	ProPlusSubR
+14	fdf3ecb9-b56f-43b2-a9b8-1b48b6bae1a7	0011	ProPlusVL	[ProPlusAcadVL]
+14	98677603-a668-4fa4-9980-3f1f05f78f69	0019	PublisherR
+14	3d014759-b128-4466-9018-e80f6320d9d0	0019	PublisherVL
+14	dbe3aee0-5183-4ff7-8142-66050173cb01	008B	SmallBusBasicsR	[SmallBusBasicsMSDNR]
+14	8090771e-d41a-4482-929e-de87f1f47e46	008B	SmallBusBasicsVL
+14	b78df69e-0966-40b1-ae85-30a5134dedd0	0017	SPDR
+14	d3422cfb-8d8b-4ead-99f9-eab0ccd990d7	0012	StandardR
+14	1f76e346-e0be-49bc-9954-70ec53a4fcfe	0012	StandardVL	[StandardAcadVL]
+14	2745e581-565a-4670-ae90-6bf7c57ffe43	0066	StarterR
+14	66cad568-c2dc-459d-93ec-2f3cb967ee34	0057	VisioSIR	Prem[Pro,Std]Exception
+14	36756cb8-8e69-4d11-9522-68899507cd6a	0057	VisioSIVL	Prem[Pro,Std]Exception
+14	db3bbc9c-ce52-41d1-a46f-1a1d68059119	001B	WordR	[HSWordR]
+14	98d4050e-9c98-49bf-9be1-85e12eb3ab13	001B	WordVL
+15	ab4d047b-97cf-4126-a69f-34df08e2f254	0015	AccessRetail
+15	259de5be-492b-44b3-9d78-9645f848f7b0	001C	AccessRuntimeRetail
+15	4374022d-56b8-48c1-9bb7-d8f2fc726343	0015	AccessVolume
+15	1b1d9bd5-12ea-4063-964c-16e7e87d6e08	0016	ExcelRetail
+15	ac1ae7fd-b949-4e04-a330-849bc40638cf	0016	ExcelVolume
+15	cfaf5356-49e3-48a8-ab3c-e729ab791250	00BA	GrooveRetail
+15	4825ac28-ce41-45a7-9e6e-1fed74057601	00BA	GrooveVolume
+15	c02fb62e-1cd5-4e18-ba25-e0480467ffaa	00E7	HomeBusinessPipcRetail
+15	cd256150-a898-441f-aac0-9f8f33390e45	0013	HomeBusinessRetail
+15	1fdfb4e4-f9c9-41c4-b055-c80daf00697d	00CE	HomeStudentARMRetail
+15	ebef9f05-5273-404a-9253-c5e252f50555	00DA	HomeStudentPlusARMRetail
+15	98685d21-78bd-4c62-bc4f-653344a63035	002F	HomeStudentRetail
+15	44984381-406e-4a35-b1c3-e54f499556e2	0044	InfoPathRetail
+15	9e016989-4007-42a6-8051-64eb97110cf2	0044	InfoPathVolume
+15	9103f3ce-1084-447a-827e-d6097f68c895	00EA	LyncAcademicRetail
+15	ff693bf4-0276-4ddb-bb42-74ef1a0c9f4d	012D	LyncEntryRetail
+15	fada6658-bfc6-4c4e-825a-59a89822cda8	012C	LyncRetail
+15	e1264e10-afaf-4439-a98b-256df8bb156f	012C	LyncVolume
+15	3169c8df-f659-4f95-9cc6-3115e6596e83	000F	MondoRetail
+15	f33485a0-310b-4b72-9a0e-b1d605510dbd	000F	MondoVolume
+15	3391e125-f6e4-4b1e-899c-a25e6092d40d	00A1	OneNoteFreeRetail
+15	8b524bcc-67ea-4876-a509-45e46f6347e8	00A1	OneNoteRetail
+15	b067e965-7521-455b-b9f7-c740204578a2	00A1	OneNoteVolume
+15	12004b48-e6c8-4ffa-ad5a-ac8d4467765a	001A	OutlookRetail
+15	8d577c50-ae5e-47fd-a240-24986f73d503	001A	OutlookVolume
+15	5aab8561-1686-43f7-9ff5-2c861da58d17	00E6	PersonalPipcRetail
+15	17e9df2d-ed91-4382-904b-4fed6a12caf0	0033	PersonalRetail
+15	31743b82-bfbc-44b6-aa12-85d42e644d5b	0018	PowerPointRetail
+15	e40dcb44-1d5c-4085-8e8f-943f33c4f004	0018	PowerPointVolume
+15	4e26cac1-e15a-4467-9069-cb47b67fe191	00E8	ProfessionalPipcRetail
+15	44bc70e2-fb83-4b09-9082-e5557e0c2ede	0014	ProfessionalRetail
+15	f2435de4-5fc0-4e5b-ac97-34f515ec5ee7	003B	ProjectProRetail
+15	ed34dc89-1c27-4ecd-8b2f-63d0f4cedc32	003B	ProjectProVolume
+15	5517e6a2-739b-4822-946f-7f0f1c5934b1	003A	ProjectStdRetail
+15	2b9e4a37-6230-4b42-bee2-e25ce86c8c7a	003A	ProjectStdVolume
+15	064383fa-1538-491c-859b-0ecab169a0ab	0011	ProPlusRetail
+15	2b88c4f2-ea8f-43cd-805e-4d41346e18a7	0011	ProPlusVolume
+15	c3a0814a-70a4-471f-af37-2313a6331111	0019	PublisherRetail
+15	38ea49f6-ad1d-43f1-9888-99a35d7c9409	0019	PublisherVolume
+15	ba3e3833-6a7e-445a-89d0-7802a9a68588	0017	SPDRetail
+15	32255c0a-16b4-4ce2-b388-8a4267e219eb	0012	StandardRetail
+15	a24cca51-3d54-4c41-8a76-4031f5338cb2	0012	StandardVolume
+15	15d12ad4-622d-4257-976c-5eb3282fb93d	0051	VisioProRetail
+15	3e4294dd-a765-49bc-8dbd-cf8b62a4bd3d	0051	VisioProVolume
+15	dae597ce-5823-4c77-9580-7268b93a4b23	0053	VisioStdRetail
+15	44a1f6ff-0876-4edb-9169-dbb43101ee89	0053	VisioStdVolume
+15	191509f2-6977-456f-ab30-cf0492b1e93a	001B	WordRetail
+15	9cedef15-be37-4ff0-a08a-13a045540641	001B	WordVolume
+15	befee371-a2f5-4648-85db-a2c55fdf324c	00E9	O365BusinessRetail
+15	537ea5b5-7d50-4876-bd38-a53a77caca32	00D6	O365HomePremRetail
+15	149dbce7-a48e-44db-8364-a53386cd4580	00D4	O365ProPlusRetail
+15	bacd4614-5bef-4a5e-bafc-de4c788037a2	00D5	O365SmallBusPremRetail
+16	6337137e-7c07-4197-8986-bece6a76fc33	00E9	O365BusinessRetail
+16	2f5c71b4-5b7a-4005-bb68-f9fac26f2ea3	00D6	O365EduCloudRetail
+16	537ea5b5-7d50-4876-bd38-a53a77caca32	00D6	O365HomePremRetail
+16	149dbce7-a48e-44db-8364-a53386cd4580	00D4	O365ProPlusRetail
+16	bacd4614-5bef-4a5e-bafc-de4c788037a2	00D5	O365SmallBusPremRetail
+16	bfa358b0-98f1-4125-842e-585fa13032e6	0015	AccessRetail
+16	9d9faf9e-d345-4b49-afce-68cb0a539c7c	001C	AccessRuntimeRetail
+16	3b2fa33f-cd5a-43a5-bd95-f49f3f546b0b	0015	AccessVolume
+16	424d52ff-7ad2-4bc7-8ac6-748d767b455d	0016	ExcelRetail
+16	685062a7-6024-42e7-8c5f-6bb9e63e697f	0016	ExcelVolume
+16	c02fb62e-1cd5-4e18-ba25-e0480467ffaa	00E7	HomeBusinessPipcRetail
+16	86834d00-7896-4a38-8fae-32f20b86fa2b	0013	HomeBusinessRetail
+16	090896a0-ea98-48ac-b545-ba5da0eb0c9c	00CE	HomeStudentARMRetail
+16	6bbe2077-01a4-4269-bf15-5bf4d8efc0b2	00DA	HomeStudentPlusARMRetail
+16	c28acdb8-d8b3-4199-baa4-024d09e97c99	002F	HomeStudentRetail
+16	e2127526-b60c-43e0-bed1-3c9dc3d5a468	002F	HomeStudentVNextRetail
+16	b21367df-9545-4f02-9f24-240691da0e58	000F	MondoRetail
+16	2cd0ea7e-749f-4288-a05e-567c573b2a6c	000F	MondoVolume
+16	436366de-5579-4f24-96db-3893e4400030	00A3	OneNoteFreeRetail
+16	83ac4dd9-1b93-40ed-aa55-ede25bb6af38	00A1	OneNoteRetail
+16	23b672da-a456-4860-a8f3-e062a501d7e8	00A1	OneNoteVolume
+16	5a670809-0983-4c2d-8aad-d3c2c5b7d5d1	001A	OutlookRetail
+16	50059979-ac6f-4458-9e79-710bcb41721a	001A	OutlookVolume
+16	5aab8561-1686-43f7-9ff5-2c861da58d17	00E6	PersonalPipcRetail
+16	a9f645a1-0d6a-4978-926a-abcb363b72a6	0033	PersonalRetail
+16	f32d1284-0792-49da-9ac6-deb2bc9c80b6	0018	PowerPointRetail
+16	9b4060c9-a7f5-4a66-b732-faf248b7240f	0018	PowerPointVolume
+16	4e26cac1-e15a-4467-9069-cb47b67fe191	00E8	ProfessionalPipcRetail
+16	d64edc00-7453-4301-8428-197343fafb16	0014	ProfessionalRetail
+16	0f42f316-00b1-48c5-ada4-2f52b5720ad0	003B	ProjectProRetail
+16	82f502b5-b0b0-4349-bd2c-c560df85b248	003B	ProjectProVolume
+16	16728639-a9ab-4994-b6d8-f81051e69833	003B	ProjectProXVolume
+16	e9f0b3fc-962f-4944-ad06-05c10b6bcd5e	003A	ProjectStdRetail
+16	82e6b314-2a62-4e51-9220-61358dd230e6	003A	ProjectStdVolume
+16	431058f0-c059-44c5-b9e7-ed2dd46b6789	003A	ProjectStdXVolume
+16	de52bd50-9564-4adc-8fcb-a345c17f84f9	0011	ProPlusRetail
+16	c47456e3-265d-47b6-8ca0-c30abbd0ca36	0011	ProPlusVolume
+16	6e0c1d99-c72e-4968-bcb7-ab79e03e201e	0019	PublisherRetail
+16	fcc1757b-5d5f-486a-87cf-c4d6dedb6032	0019	PublisherVolume
+16	971cd368-f2e1-49c1-aedd-330909ce18b6	012D	SkypeforBusinessEntryRetail
+16	418d2b9f-b491-4d7f-84f1-49e27cc66597	012C	SkypeforBusinessRetail
+16	03ca3b9a-0869-4749-8988-3cbc9d9f51bb	012C	SkypeforBusinessVolume
+16	9103f3ce-1084-447a-827e-d6097f68c895	012C	SkypeServiceBypassRetail
+16	4a31c291-3a12-4c64-b8ab-cd79212be45e	0012	StandardRetail
+16	0ed94aac-2234-4309-ba29-74bdbb887083	0012	StandardVolume
+16	2dfe2075-2d04-4e43-816a-eb60bbb77574	0051	VisioProRetail
+16	295b2c03-4b1c-4221-b292-1411f468bd02	0051	VisioProVolume
+16	0594dc12-8444-4912-936a-747ca742dbdb	0051	VisioProXVolume
+16	c76dbcbc-d71b-4f45-b5b3-b7494cb4e23e	0053	VisioStdRetail
+16	44151c2d-c398-471f-946f-7660542e3369	0053	VisioStdVolume
+16	1d1c6879-39a3-47a5-9a6d-aceefa6a289d	0053	VisioStdXVolume
+16	cacaa1bf-da53-4c3b-9700-11738ef1c2a5	001B	WordRetail
+16	c3000759-551f-4f4a-bcac-a4b42cbf1de2	001B	WordVolume

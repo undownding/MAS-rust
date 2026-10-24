@@ -11,10 +11,10 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.3.0：新增 Online KMS 原生流程与自动续期；HWID / KMS38 和通用许可证管理继续使用 Rust。**
+**v0.4.0-dev：在原生 Online KMS 基础上新增 Office C2R 许可转换与 MSI 批量许可准备。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
-Ohook、TSforge、Office Retail → Volume 转换及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
+Ohook、TSforge、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 
@@ -31,7 +31,7 @@ Ohook、TSforge、Office Retail → Volume 转换及高级工具仍使用固定�
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
 | Ohook / 卸载 | GUI |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX / 重置 | GUI，支持默认、SCID、ZCID、KMS4k 方法 |
-| Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 限已安装的批量许可；支持自定义主机、端口与原生续期 |
+| Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 支持 C2R 转换及 MSI 批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
 | 激活状态、Windows / Office 版本切换、排障、OEM 提取、其他高级选项 | 工具箱 → 完整 MAS 菜单 |
 | 密钥安装 / 卸载、联机激活、自定义 KMS 主机与端口 | 许可证页，Rust 直接调用 COM/WMI |
@@ -58,13 +58,13 @@ Ohook、TSforge、Office Retail → Volume 转换及高级工具仍使用固定�
 ### Online KMS 原生流程
 
 - Windows 根据 SKU 和系统已有 Activation ID 选择 GVLK；已有永久许可或 KMS38 时保留现状。
-- Office / Project / Visio 原生入口仅处理已安装的 KMSCLIENT 许可证。Retail 转换和上游旧续期任务卸载从“完整版兼容菜单”进入。
+- Office / Project / Visio 原生入口读取 C2R 产品注册表，按固定上游表将支持的 Retail 产品映射至 Volume，直接导入本机许可文件并安装密钥；勾选“禁止更改版本”会跳过此转换。MSI 仅准备已安装的批量许可产品，不转换 MSI Retail。上游旧续期任务卸载仍从兼容菜单进入。
 - 高级选项可指定服务器与端口；留空使用固定上游服务器列表并重试。指定主机后只连接该主机，失败不会回退到公共服务器。所有尝试失败后恢复原主机与端口；已安装的 GVLK 不会自动还原。
 - 默认在成功后通过 Task Scheduler COM 注册 SYSTEM 续期任务，每 6 小时运行一次；可勾选“不创建自动续期任务”。续期只操作已有 KMS 许可证，不安装密钥或更改版本。
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.3.0 的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.4.0-dev 的 Office 转换，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 
