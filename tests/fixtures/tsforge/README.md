@@ -19,3 +19,9 @@ not establish compatibility with all real Windows stores.
 `token-meta.bin` with Python's hashlib/struct (no external dependency). These
 cover two directory blocks, named inactive slots, Unicode surrogate pairs,
 empty populated content and duplicate metadata keys.
+
+`python3 tools/tsforge_key_vectors.py` regenerates `key2009.json`. Five synthetic
+PKEY2009 cases verify field packing, base-24/N encoding, binding bag and GUID
+memory bytes, phone payloads, PID3 checksum and PID4 fixed Unicode fields.
+The generator uses byte-wise long division and polynomial-division CRC, while
+the Rust encoder uses u128 arithmetic and a bit-loop CRC. No installation occurs.

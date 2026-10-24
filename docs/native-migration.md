@@ -175,3 +175,11 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 TSforge 面板新增备份目录输入与恢复按钮，沿用后台执行、进度日志和操作确认。恢复操作持有同一全局互斥锁，按本机当前路径定位 data.dat；清单不能指定其他写入目标。全部备份通过校验和、RSA/AES 完整性及物理存储格式检查后，才建立恢复事务，先备份当前数据再写入，并恢复服务初始状态、刷新许可状态。操作失败会区分存储是否已经完整恢复；回滚错误和备份目录保留在日志。
 
 新增测试验证即使 SHA-256 正确，只要任意文件未通过格式验证，所有目标都不会被恢复写入。64 项本地测试与 Linux/Windows 交叉 Clippy 通过；没有执行真实系统许可恢复。当前只恢复物理存储，不回退其他组件。GUI 显式恢复已完成，启动时发现中断事务、旧版布局和完整 TSforge 激活流程仍待继续迁移。
+
+### TSforge PKEY2009 数据编码（进行中）
+
+新增 `product_key.rs`，移植 20 位组号、30 位序列号、53 位安全字段、升级位和 CRC-32 校验位的组合、24 进制文本与 N 标记、产品密钥绑定 VariableBag/SHA-256 ID、现代/Windows 7 电话数据，以及 PID3/PID4 和 Extended PID。PID4 使用调用方明确传入的 MPC、地区、系统构建和日期，避免测试依赖运行机器。固定字符串字段按 UTF-16 字节长度验证，越界、嵌入 NUL 和非法字段值报错，不截断数据。
+
+`tools/tsforge_key_vectors.py` 使用上游逐字节除法生成文本，而 Rust 使用 u128 除法；CRC 复用独立多项式除法参考实现。五组向量包含零值、所有位宽上限、上游两组 SCID 参数及跨位边界值；逐字节核对密钥、绑定数据/ID、两种电话数据及 PID3/PID4。样本只用于数据编码验证，不安装密钥、不调用许可服务。
+
+该模块暂在测试构建中，尚未接入安装流程。PKEY2005 需要兼容上游使用的 .NET Framework Random(int seed) 五字符后缀，以及 PID2；随机数规则已核对 [Microsoft Reference Source](https://raw.githubusercontent.com/microsoft/referencesource/main/mscorlib/system/random.cs)，后续需用实际 .NET 向量交叉验证。PKeyConfig XML 的算法/产品/范围映射及运行时集成也仍待完成，TSforge 激活按钮保持兼容路由。

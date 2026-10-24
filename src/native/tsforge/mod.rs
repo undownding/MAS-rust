@@ -17,3 +17,7 @@ mod variable_bag;
 mod runtime;
 #[cfg(windows)]
 pub use runtime::{reset, restore};
+
+// Product-key installation/configuration integration is still in progress.
+#[cfg(test)]
+mod product_key;
