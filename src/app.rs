@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows / Office / ESU / KMS Host：build 9600+ 使用 Rust；APPX 仅适用 8/8.1。Windows 评估版、旧版存储及组合入口仍兼容。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows / Office / ESU / KMS Host：build 9600+ 使用 Rust；APPX 仅适用 8/8.1。组合入口同样使用 Rust；Windows 评估版与旧版存储仍兼容。原生激活待实机验收，重置不等于激活。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -140,7 +140,7 @@ impl MasApp {
                 }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
-                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"] | ["/Z-WinHost"] | ["/Z-OffHost"] | ["/Z-APPX"] | ["/Z-Office"] | ["/Z-ProjectVisio"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
+                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"] | ["/Z-WinHost"] | ["/Z-OffHost"] | ["/Z-APPX"] | ["/Z-Office"] | ["/Z-ProjectVisio"] | ["/Z-WindowsESUOffice"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
                     }
                 });
             });
@@ -296,7 +296,7 @@ impl MasApp {
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("HWID / Ohook / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；TSforge 现代 Windows、Office、ESU、KMS Host 和重置已接入 Rust；组合、旧存储与高级工具仍兼容，修复分支继续迁移。");
+                        ui.label("HWID / Ohook / KMS38 / Online KMS 核心和许可证管理已迁移 Rust；TSforge 现代 Windows、Office、ESU、KMS Host 和重置已接入 Rust；组合入口已接入 Rust；旧存储与高级工具仍兼容，修复分支继续迁移。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");
@@ -348,6 +348,10 @@ impl MasApp {
                             if matches!(op.args, ["/Z-Office"] | ["/Z-ProjectVisio"]) {
                                 ui.label("将按方法转换受支持的 Office 产品、导入本机许可，并清理订阅缓存和冲突密钥。可能需要重新登录 Office；配置与许可导入不自动撤销。Project / Visio 模式保留其他产品家族的密钥。");
                                 ui.label("现代存储使用 Rust，旧存储使用兼容引擎。原生流程失败不会自动重试脚本；实际激活尚待实机验收。");
+                            }
+                            if op.args == ["/Z-WindowsESUOffice"] {
+                                ui.label("按 Windows → ESU → Office 依次处理，共享激活方法。KMS4k 会跳过 ESU；各范围失败单独记录，已完成的修改不自动回滚。");
+                                ui.label("Office 处理会转换适用产品、清理订阅缓存和冲突密钥；可能需要重新登录 Office。旧存储或 Windows 评估版在开始修改前转入兼容引擎。");
                             }
                             if op.args == ["/Z-Reset"] {
                                 ui.label("将重置许可存储中的 rearm 计数、宽限/评估计时器及相关标记。每个阶段保留备份；这不等于激活系统。当前原生路径仅处理现代存储布局（build 9600+）。");

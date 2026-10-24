@@ -10,6 +10,13 @@ pub enum Method {
     Kms4k,
 }
 impl Method {
+    pub fn option(self) -> usize {
+        match self {
+            Self::StaticCid => 1,
+            Self::ZeroCid => 2,
+            Self::Kms4k => 3,
+        }
+    }
     /// Windows-only /Z-Windows default. Combined/Office/ESU requests have a
     /// different Auto policy and must not use this entry point.
     pub fn windows(option: usize, build: u32) -> Result<Self, String> {

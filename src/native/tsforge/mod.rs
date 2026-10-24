@@ -91,6 +91,9 @@ mod auxiliary_runtime;
 pub use auxiliary::Scope as AuxiliaryScope;
 #[cfg(windows)]
 pub use auxiliary_runtime::activate as activate_auxiliary;
+mod combined;
+#[cfg(windows)]
+pub use combined::activate as activate_combined;
 mod license_reinstall;
 mod office_client;
 #[cfg(windows)]

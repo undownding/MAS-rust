@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/Office/Project/Visio/ESU/KMS Host/APPX 的现代存储入口及重置已接入 Rust；其他范围仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/Office/Project/Visio/ESU/KMS Host/APPX 与组合的现代存储入口及重置已接入 Rust；旧存储/评估版仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的组合、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -456,3 +456,12 @@ C2R 在许可准备前直接查询 SCM：Office 16 要求 ClickToRunSvc，Office
 两个单项按钮已接入 Office 原生编排：build 9600+ 使用 Rust，旧存储明确转兼容；原生错误不重跑脚本。界面范围标签、关于页及确认说明同步更新，说明产品转换、用户缓存、冲突密钥和部分修改不自动撤销。组合入口仍兼容，不将单项迁移等同于整个 TSforge 完成。
 
 147 项本地测试与双目标 Clippy 通过，入口分派测试新增两个单项范围。更新 README、实际 Linux 预览截图，并构建 Windows dev.8 本地测试包。Office 许可准备 CI 40122613303 已成功；UWP CI 40122867640 的实际包查询测试及 Clippy 已通过，发布构建尚在运行；清理/编排 CI 40123221959 仍在运行。真实 Office 激活和清理仍需实机验收。
+
+
+### Windows + ESU + Office 组合入口（v0.6.0-dev.9）
+
+新增 `combined.rs`，统一方法/联网判断、KMS 配置清理及 SPP 重评估，依次调用 Windows、ESU、Office 原生后端。组合默认遵循上游 StaticCID（build 26100+）/ZeroCID 规则，而非 Windows 单项的 KMS4k 默认；离线 Auto 回退 KMS4k 后明确跳过 ESU。单项后端增加组合调用路径，使用已选方法，不重复联网判断、全局 KMS 清理和重评估。
+
+全部请求的旧存储/评估版兼容决策在修改前完成；执行中某个范围返回新的兼容请求，视为带说明的失败，不在部分修改后自动运行脚本。各范围出错仍继续其他范围，结果保留成功、失败与跳过原因；已永久激活 Windows 的提示区分组合共享配置清理。原生错误不会使引擎再次激活。
+
+GUI 组合按钮、确认说明、README、真实预览截图和 Windows 本地包更新至 dev.9。150 项本地测试与双目标 Clippy 通过，新增方法一致性、KMS4k 跳过 ESU、错误继续、意外兼容返回禁止回退、共享清理失败停止，以及入口分派覆盖。UWP CI 40122867640 已成功；清理后端 CI 40123221959 与 Office GUI CI 40123486597 仍在运行。组合实际激活尚未进行实机验收；旧存储、评估版、修复与高级工具仍待迁移，目标未完成。

@@ -118,6 +118,19 @@ fn system_esu_tool(file: &str, args: &[&str], report: &dyn Fn(&str)) -> Result<(
 /// Internal until the GUI scope route is enabled.
 /// Old stores return None before any activation; errors do not request fallback.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
+    activate_inner(option, false, report)
+}
+pub(super) fn activate_combined(
+    method: Method,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
+    activate_inner(method.option(), true, report)
+}
+fn activate_inner(
+    option: usize,
+    combined: bool,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }
@@ -135,9 +148,13 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
         3 => return Err("Windows ESU 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
         _ => return Err("未知 TSforge 方法".into()),
     };
-    let method = super::connectivity::resolve(method, option == 0, || {
-        super::connectivity::connected(report)
-    })?;
+    let method = if combined {
+        method
+    } else {
+        super::connectivity::resolve(method, option == 0, || {
+            super::connectivity::connected(report)
+        })?
+    };
     if method == Method::Kms4k {
         return Err("Auto 模式未确认联网，ESU 不支持离线 KMS4k，未执行激活".into());
     }
@@ -207,6 +224,9 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
             "ESU 已完成 {succeeded} 项许可验证。许可证状态不代表所有年份均可通过 Windows Update 获取更新。"
         ))
     };
+    if combined {
+        return result.map(Some);
+    }
     super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
         .map(Some)
 }

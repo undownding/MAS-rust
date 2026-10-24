@@ -189,6 +189,12 @@ pub fn run(_op: Operation, _options: Options, _report: &dyn Fn(&str)) -> Result<
 #[cfg(windows)]
 pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<String, String> {
     let _guard = crate::native::session::OperationGuard::acquire()?;
+    if op.args == ["/Z-WindowsESUOffice"] {
+        return match crate::native::tsforge::activate_combined(options.ts_method, report)? {
+            Some(result) => Ok(result),
+            None => run_compatibility(op, options, report),
+        };
+    }
     if op.args == ["/Z-Windows"] {
         return match crate::native::tsforge::activate_windows(options.ts_method, report)? {
             Some(result) => Ok(result),
@@ -277,6 +283,7 @@ pub fn is_native(op: Operation) -> bool {
             | ["/Z-APPX"]
             | ["/Z-Office"]
             | ["/Z-ProjectVisio"]
+            | ["/Z-WindowsESUOffice"]
     ) || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
 }
 
@@ -419,6 +426,7 @@ mod tests {
                         | ["/Z-APPX"]
                         | ["/Z-Office"]
                         | ["/Z-ProjectVisio"]
+                        | ["/Z-WindowsESUOffice"]
                         | ["/Ohook"]
                         | ["/Ohook-Uninstall"]
                         | ["/KMS38"]

@@ -50,6 +50,22 @@ pub fn activate(
     option: usize,
     report: &dyn Fn(&str),
 ) -> Result<Option<String>, String> {
+    activate_inner(project_visio_only, option, false, report)
+}
+#[cfg(windows)]
+pub(super) fn activate_combined(
+    method: Method,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
+    activate_inner(false, method.option(), true, report)
+}
+#[cfg(windows)]
+fn activate_inner(
+    project_visio_only: bool,
+    option: usize,
+    combined: bool,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
     use super::{
         activation_flow, connectivity, kms_cleanup, office_finalization, office_runtime,
         reevaluation, runtime, windows_context::Context,
@@ -65,15 +81,19 @@ pub fn activate(
         return Ok(None);
     }
     runtime::preflight()?;
-    let selected = connectivity::resolve(method(option, context.build)?, option == 0, || {
-        connectivity::connected(report)
-    })?;
+    let selected = if combined {
+        method(option, context.build)?
+    } else {
+        connectivity::resolve(method(option, context.build)?, option == 0, || {
+            connectivity::connected(report)
+        })?
+    };
     let prepared = office_runtime::prepare(context.build, selected, project_visio_only, report)?;
     let result = batch(
         &prepared.ids,
         prepared.errors.clone(),
         || {
-            if selected == Method::Kms4k {
+            if !combined && selected == Method::Kms4k {
                 kms_cleanup::clear(context.build, report)?;
             }
             office_finalization::finish(&prepared, project_visio_only, selected, report)
@@ -97,7 +117,7 @@ pub fn activate(
             }
         },
     );
-    if prepared.ids.is_empty() {
+    if combined || prepared.ids.is_empty() {
         return result.map(Some);
     }
     reevaluation::finish(result, || reevaluation::run(context.build, report)).map(Some)

@@ -312,6 +312,19 @@ pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
 /// Called under engine's OperationGuard. None explicitly requests legacy/eval
 /// compatibility; native errors never trigger a second, compatibility attempt.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
+    activate_inner(option, false, report)
+}
+pub(super) fn activate_combined(
+    method: Method,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
+    activate_inner(method.option(), true, report)
+}
+fn activate_inner(
+    option: usize,
+    combined: bool,
+    report: &dyn Fn(&str),
+) -> Result<Option<String>, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }
@@ -338,22 +351,36 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
             report("此 Windows 存储版本尚未接入原生激活，使用兼容引擎。");
             Ok(None)
         }
-        Plan::AlreadyPermanent => Ok(Some("Windows 已永久激活，未修改许可或 KMS 配置。".into())),
+        Plan::AlreadyPermanent => Ok(Some(
+            if combined {
+                "Windows 已永久激活，跳过 Windows 密钥安装；共享配置清理见组合日志。"
+            } else {
+                "Windows 已永久激活，未修改许可或 KMS 配置。"
+            }
+            .into(),
+        )),
         Plan::Activate { sku, method } => {
-            let method = super::connectivity::resolve(method, option == 0, || {
-                super::connectivity::connected(report)
-            })?;
+            let method = if combined {
+                method
+            } else {
+                super::connectivity::resolve(method, option == 0, || {
+                    super::connectivity::connected(report)
+                })?
+            };
             report(&format!("原生 Rust TSforge：{sku} · {method:?}"));
             let mut backend = activation_flow::Native {
                 required_channel: None,
                 report,
-                cleanup_build: if method == Method::Kms4k {
+                cleanup_build: if !combined && method == Method::Kms4k {
                     Some(context.build)
                 } else {
                     None
                 },
             };
             let result = activation_flow::run(&mut backend, sku, method);
+            if combined {
+                return result.map(Some);
+            }
             super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
                 .map(Some)
         }
