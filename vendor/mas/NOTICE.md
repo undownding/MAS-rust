@@ -13,3 +13,9 @@ Original paths: MAS/All-In-One-Version-KL/MAS_AIO.cmd and MAS/Separate-Files-Ver
 KMS38's pinned commit is the parent of the removal commit 470d3b900e6aebfba224fde3ea7957308dd61230.
 
 The Rust integration writes these bytes to an exclusive temporary directory and invokes only allowlisted options. It adds a separate launcher with -qedit to avoid the interactive script detaching before temporary-file cleanup, and waits for acknowledgement before closing the console. The scripts' network behavior is unchanged.
+
+## Native migration data
+
+`native/hwid.tsv`, `native/kms38.tsv`, both fallback tables, and `native/ticket-key.blob` are extracted from the above pinned files by `tools/extract_native_data.py`. The blob is the upstream public signing data, not a user credential. The original scripts remain unchanged. Rust implementations derived from those algorithms retain this project's GPL-3.0-only licensing. Independent reference tickets in `tests/fixtures` validate the Rust encoding and signature output.
+
+Since v0.2.0 compatibility scripts are staged under LOCALAPPDATA/MAS-Rust/engine-runs, not the user's Temp subtree, because upstream rejects nested Temp paths. Noninteractive runs stream a log into the GUI. HWID/KMS38 primary activation routes no longer execute those scripts.

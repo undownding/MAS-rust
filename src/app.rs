@@ -16,6 +16,11 @@ pub fn install_fonts(ctx: &egui::Context) {
     ctx.set_style_of(egui::Theme::Dark, style);
 }
 
+enum Event {
+    Progress(String),
+    Finished(Result<String, String>),
+}
+
 #[derive(Clone)]
 enum Job {
     Engine(Operation, Options),
@@ -31,8 +36,10 @@ pub struct MasApp {
     port: String,
     options: Options,
     pending: Option<Job>,
-    receiver: Option<mpsc::Receiver<Result<String, String>>>,
+    receiver: Option<mpsc::Receiver<Event>>,
     log: String,
+    #[cfg(test)]
+    content_rect: Option<egui::Rect>,
 }
 impl Default for MasApp {
     fn default() -> Self {
@@ -47,6 +54,8 @@ impl Default for MasApp {
             pending: None,
             receiver: None,
             log: "准备就绪。选择功能后查看并确认操作。\n".into(),
+            #[cfg(test)]
+            content_rect: None,
         }
     }
 }
@@ -54,22 +63,28 @@ impl MasApp {
     fn start(&mut self, job: Job, ctx: &egui::Context) {
         let (tx, rx) = mpsc::channel();
         self.receiver = Some(rx);
+        self.page = "日志";
+        self.log.push_str("\n──── 开始新任务 ────\n");
         let ctx = ctx.clone();
         std::thread::spawn(move || {
+            let report = |line: &str| {
+                let _ = tx.send(Event::Progress(line.to_owned()));
+                ctx.request_repaint();
+            };
             let result = match job {
-                Job::Engine(op, options) => engine::run(op, options),
+                Job::Engine(op, options) => engine::run(op, options, &report),
                 Job::License(product, action) => {
                     process::execute(product, action, Arc::new(AtomicBool::new(false)))
                         .map(|r| r.output)
                 }
             };
-            let _ = tx.send(result);
+            let _ = tx.send(Event::Finished(result));
             ctx.request_repaint();
         });
     }
     fn activation(&mut self, ui: &mut egui::Ui) {
         ui.heading("Windows & Office");
-        ui.label("选择激活方式。引擎会在独立窗口显示实时进度及交互提示。");
+        ui.label("HWID / KMS38 使用原生 Rust 引擎；其他方式使用兼容引擎。进度与错误显示在日志页。");
         ui.add_space(8.0);
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
@@ -96,7 +111,7 @@ impl MasApp {
                 if category == "工具箱" { ui.label("打开完整上游菜单：查询状态、更改 Windows / Office 版本、故障排查、提取 $OEM$、帮助及其他高级设置。"); }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
-                        if ui.button(op.title).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
+                        if ui.button(format!("{} · {}", op.title, if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
                     }
                 });
             });
@@ -108,7 +123,7 @@ impl MasApp {
             ui.selectable_value(&mut self.product, Product::Windows, "Windows");
             ui.selectable_value(&mut self.product, Product::Office, "Office");
         });
-        ui.label("通过 Windows slmgr / Office ospp 管理许可证。");
+        ui.label("通过原生 COM/WMI 管理许可证，不调用 PowerShell、slmgr 或 ospp。");
         let mut action = None;
         ui.horizontal(|ui| {
             if ui.button("查询状态").clicked() {
@@ -124,7 +139,7 @@ impl MasApp {
             egui::TextEdit::singleline(&mut self.key)
                 .password(true)
                 .hint_text("XXXXX-XXXXX-XXXXX-XXXXX-XXXXX")
-                .desired_width(380.0),
+                .desired_width(f32::INFINITY),
         );
         if ui.button("安装密钥").clicked() {
             action = Some(operations::normalize_product_key(&self.key).map(Action::InstallKey));
@@ -146,12 +161,12 @@ impl MasApp {
             }
         });
         ui.separator();
-        ui.label("自定义 KMS 服务器");
+        ui.label("自定义 KMS 服务器（仅修改所选产品已安装许可证的专用设置）");
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.host)
                     .hint_text("主机名 / IP 地址")
-                    .desired_width(260.0),
+                    .desired_width((ui.available_width() - 84.0).max(120.0)),
             );
             ui.add(egui::TextEdit::singleline(&mut self.port).desired_width(60.0));
         });
@@ -177,21 +192,35 @@ impl MasApp {
         }
     }
 }
-impl eframe::App for MasApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+impl MasApp {
+    fn render(&mut self, ui: &mut egui::Ui) {
+        let mut finished = false;
         if let Some(rx) = &self.receiver {
-            let result = match rx.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Disconnected) => Some(Err("后台任务异常中止。".into())),
-                Err(mpsc::TryRecvError::Empty) => None,
-            };
-            if let Some(result) = result {
-                self.log.push_str(&match result {
-                    Ok(text) => format!("{text}\n"),
-                    Err(error) => format!("错误：{error}\n"),
-                });
-                self.receiver = None;
+            loop {
+                match rx.try_recv() {
+                    Ok(Event::Progress(line)) => {
+                        self.log.push_str(&line);
+                        self.log.push('\n');
+                    }
+                    Ok(Event::Finished(result)) => {
+                        self.log.push_str(&match result {
+                            Ok(text) => format!("{text}\n"),
+                            Err(e) => format!("错误：{e}\n"),
+                        });
+                        finished = true;
+                        break;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        self.log.push_str("后台任务异常中止。\n");
+                        finished = true;
+                        break;
+                    }
+                }
             }
+        }
+        if finished {
+            self.receiver = None;
         }
         let ctx = ui.ctx().clone();
         if self.receiver.is_some() {
@@ -214,8 +243,10 @@ impl eframe::App for MasApp {
                 ui.colored_label(Color32::YELLOW, "请以管理员身份启动应用。");
             }
             if !cfg!(windows) { ui.colored_label(Color32::from_rgb(245,172,92), "预览模式 · 执行功能需要 Windows"); }
-            if self.receiver.is_some() { ui.horizontal(|ui| { ui.spinner(); ui.label("任务运行中。请查看引擎窗口；结束任务后即可关闭应用。"); }); }
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            if self.receiver.is_some() { ui.horizontal(|ui| { ui.spinner(); ui.label("任务运行中；当前日志显示执行进度。交互菜单请查看独立窗口。"); }); }
+            let viewport_height = ui.available_height();
+            let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                ui.set_width(ui.available_width());
                 ui.add_enabled_ui(self.receiver.is_none() && cfg!(windows), |ui| {
                     match self.page {
                         "激活" => self.activation(ui),
@@ -229,14 +260,14 @@ impl eframe::App for MasApp {
                             if ui.button("复制日志").clicked() { ui.ctx().copy_text(self.log.clone()); }
                             if ui.button("清空").clicked() { self.log.clear(); }
                         });
-                        ui.add(egui::TextEdit::multiline(&mut self.log).desired_width(f32::INFINITY).desired_rows(22).interactive(false));
+                        ui.add(egui::TextEdit::multiline(&mut self.log).desired_width(f32::INFINITY).desired_rows(1).min_size(egui::vec2(0.0, (viewport_height - 52.0).max(100.0))).interactive(false));
                     }
                     "关于" => {
-                        ui.heading("MAS Rust 0.1.0");
+                        ui.heading(concat!("MAS Rust ", env!("CARGO_PKG_VERSION")));
                         ui.label("Rust / egui 图形前端，内嵌固定版本 MAS 引擎。非 Microsoft 或 MAS 官方产品。");
                         ui.label("当前引擎：MAS 3.12 · 6401d2f36975");
                         ui.label("KMS38 历史引擎：c9789e9aa341");
-                        ui.label("激活核心为上游脚本，未宣称纯 Rust 重写。高级工具保留原生控制台交互。");
+                        ui.label("HWID / KMS38 核心和许可证管理已迁移 Rust；Ohook / TSforge / Online KMS 与高级工具仍使用上游兼容引擎。");
                         ui.hyperlink_to("上游源码与文档", "https://github.com/massgravel/Microsoft-Activation-Scripts");
                         ui.hyperlink_to("KMS38 兼容性变更", "https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230");
                         ui.label("GPL-3.0-only · 上游及其贡献者版权保留。许可证随源代码分发。");
@@ -244,6 +275,8 @@ impl eframe::App for MasApp {
                     _ => {}
                 }
             });
+            #[cfg(test)] { self.content_rect = Some(scroll.inner_rect); }
+            #[cfg(not(test))] let _ = scroll;
         });
         if let Some(job) = self.pending.clone() {
             let mut execute = false;
@@ -256,7 +289,11 @@ impl eframe::App for MasApp {
                         Job::Engine(op, options) => {
                             ui.label(op.title);
                             ui.monospace(engine::arguments(*op, options).join(" "));
-                            ui.label("将打开管理员引擎窗口。请在该窗口查看进度与结果。");
+                            ui.label(if engine::is_native(*op) {
+                                "使用原生 Rust 执行；进度与 HRESULT 错误在日志页显示。"
+                            } else {
+                                "使用上游兼容引擎，仍需要 Windows PowerShell；日志页显示执行结果。"
+                            });
                             if op.legacy {
                                 ui.colored_label(
                                     Color32::YELLOW,
@@ -279,6 +316,45 @@ impl eframe::App for MasApp {
             }
             if dismiss {
                 self.pending = None;
+            }
+        }
+    }
+}
+
+impl eframe::App for MasApp {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.render(ui);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn scroll_area_tracks_window_right_edge_on_every_page() {
+        let ctx = egui::Context::default();
+        let mut app = MasApp::default();
+        for width in [760.0, 920.0, 1440.0, 760.0] {
+            for page in ["激活", "许可证", "日志", "关于"] {
+                app.page = page;
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width, 680.0),
+                    )),
+                    ..Default::default()
+                };
+                let mut output = ctx.run_ui(input, |ui| app.render(ui));
+                output.textures_delta.clear();
+                let rect = app.content_rect.unwrap();
+                assert!(
+                    rect.right() >= width - 32.0 && rect.right() <= width,
+                    "{page}: {width} => {rect:?}"
+                );
+                assert!(
+                    rect.bottom() >= 650.0,
+                    "scroll area should fill the remaining height"
+                );
             }
         }
     }

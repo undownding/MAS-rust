@@ -25,3 +25,6 @@ jobs:
             LICENSE
             README.md
             vendor/mas/NOTICE.md
+            docs/
+            assets/
+            screenshots/

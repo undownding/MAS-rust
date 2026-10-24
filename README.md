@@ -11,26 +11,30 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**实现方式：Rust GUI + 固定版本的 MAS 脚本引擎，不是激活算法的纯 Rust 重写。**
-主要激活方法可从图形界面选择，执行进度在独立控制台显示；高级工具仍使用完整上游交互菜单。并非所有上游流程都已改写成原生 GUI。
+**v0.2.0：HWID / KMS38 主要激活流程与通用许可证管理已迁移到 Rust。**
+原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
+
+Ohook、TSforge、Online KMS 主流程及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
 
 ## 界面预览
 
 ![MAS Rust 激活页实际运行截图](screenshots/mas-rust-preview.png)
 
-截图来自 Linux 下的实际运行画面。Linux 为预览模式，因此执行按钮置灰；激活和许可证操作需要在 Windows 上运行。图中 TSforge、Online KMS 和高级选项处于折叠状态。
+截图来自 Linux 下的实际运行画面。Linux 为预览模式，因此执行按钮置灰；激活和许可证操作需要在 Windows 上运行。图中 TSforge、Online KMS 和高级选项处于折叠状态。内容区随窗口宽度展开，滚动条固定在右侧。
+
+![MAS Rust 许可证管理页](screenshots/mas-rust-license.png)
 
 ## 功能
 
 | 功能 | 入口 |
 | --- | --- |
-| HWID | GUI，支持禁止自动更改版本 |
+| HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
 | Ohook / 卸载 | GUI |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX / 重置 | GUI，支持默认、SCID、ZCID、KMS4k 方法 |
 | Online KMS Windows / Office / Project / Visio / 卸载 | GUI，可选择禁止版本更改与禁止自动续期任务 |
-| KMS38 | GUI 执行及历史完整菜单 |
+| KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
 | 激活状态、Windows / Office 版本切换、排障、OEM 提取、其他高级选项 | 工具箱 → 完整 MAS 菜单 |
-| 密钥安装 / 卸载、联机激活、自定义 KMS 主机与端口 | 许可证页，调用系统 slmgr / ospp |
+| 密钥安装 / 卸载、联机激活、自定义 KMS 主机与端口 | 许可证页，Rust 直接调用 COM/WMI |
 
 上游 MAS 当前版本已移除 KMS38。这里保留移除前的固定版本；上游注明 **build 26100.7019 起 CLiP KMS 许可机制被废弃**。历史引擎不能恢复新系统已删除的能力，不能承诺所有 Windows 版本均可使用 KMS38。
 参考：[移除提交](https://github.com/massgravel/Microsoft-Activation-Scripts/commit/470d3b900e6aebfba224fde3ea7957308dd61230)。
@@ -41,15 +45,15 @@
 
 前往 [GitHub Actions](https://github.com/undownding/MAS-rust/actions/workflows/build.yml)，选择成功的 `Windows build` 运行，在 Artifacts 中下载 `mas-rust-windows-x64`，解压后运行 `mas-rust.exe`。下载 Actions 构建产物通常需要登录 GitHub；也可以按下方说明自行编译。
 
-当前项目处于早期阶段，构建产物未经 Windows 实机激活验证。
+2026-10-24，用户反馈 v0.2.0 测试工作正常。尚未记录具体 Windows 构建号和所测功能组合，这一反馈不代表全部激活方式及 Office 版本均已验证。
 
 ### 操作步骤
 
 1. 运行 EXE 并接受 Windows 管理员提示。
-2. 在“激活”选择方法和参数，确认后查看独立引擎窗口。
+2. 在“激活”选择方法和参数，确认后在日志页查看执行进度与错误。
 3. 工具箱中的完整菜单包含上游的版本切换、排障和 OEM 等交互流程。
-4. 操作结束后按任意键关闭引擎窗口，再到“许可证”查询状态。
-5. “日志”页可复制 GUI 任务结果；完整过程输出请在引擎窗口查看。
+4. 非交互任务完成后到“许可证”查询状态；完整交互菜单仍在独立窗口运行。
+5. “日志”页可复制进度与任务结果。兼容引擎非交互日志保存在 `%LOCALAPPDATA%\MAS-Rust\logs`；交互菜单输出在独立窗口显示。
 
 ## 构建与运行
 
@@ -76,9 +80,9 @@ cargo build --release --locked --target x86_64-pc-windows-gnu
 
 ## 执行方式与已知限制
 
-GUI 同时只允许一个任务。运行中不允许关闭主窗口，以保持内嵌脚本生命周期。GUI 日志记录任务结果，完整激活过程输出保留在引擎窗口；进程退出码不代表激活成功。系统授权工具可能返回零退出码并在正文报告失败，应阅读查询结果。
+GUI 同时只允许一个任务。运行中不允许关闭主窗口，以保持内嵌脚本生命周期。原生流程依据 WMI 许可状态判断结果；兼容引擎退出码不代表激活成功，完成后应查询实际许可证状态。
 
-脚本内嵌在 EXE 中，运行时不下载引擎；引擎本身的联机操作和资源下载沿用上游逻辑。执行时写入独占临时目录，退出后清理。所有传入脚本的参数均来自固定选项，不接受任意命令输入。不要在 Windows ARM64 的 x64 仿真环境运行此构建：上游的跨架构重启流程尚未验证。
+脚本内嵌在 EXE 中，运行时不下载引擎；引擎本身的联机操作和资源下载沿用上游逻辑。兼容脚本执行时写入 `%LOCALAPPDATA%\MAS-Rust\engine-runs` 中的独占目录，退出后清理。该目录避开上游禁止使用的 Temp 子目录。所有传入脚本的参数均来自固定选项，不接受任意命令输入。不要在 Windows ARM64 的 x64 仿真环境运行此构建：上游的跨架构重启流程尚未验证。
 
 ## 项目结构
 
@@ -87,7 +91,8 @@ src/
   app.rs          中文 GUI、任务状态与操作确认
   engine.rs       固定引擎、功能选项与启动流程
   operations.rs   许可证参数校验与命令构建
-  process.rs      系统工具执行与输出处理
+  process.rs      许可证操作入口与密钥脱敏
+  native/         Rust 票据、SKU 数据、COM/WMI、服务控制与激活流程
   main.rs         应用入口与窗口图标
 assets/           SVG / PNG / 多尺寸 ICO
 screenshots/      README 实际运行截图
@@ -102,9 +107,9 @@ build.rs          Windows 图标资源和管理员权限清单
 
 ## 验证范围
 
-单元测试覆盖参数校验、命令生成、Office 路径、GUI 开关与固定版本引擎的对应关系。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
+单元测试覆盖多窗口尺寸布局、参数校验、SKU 匹配、版本回退、票据签名参考向量、原生路由与兼容引擎启动器。Windows 编译检查和交叉构建用于发现平台代码与资源嵌入问题，**不等价于 Windows 实机激活测试**。
 
-实机验收需覆盖：中文字体与输出、UAC、独立控制台交互与退出、各 Office 安装布局、各激活方式前后的许可证状态，以及历史 Windows 上的 KMS38。当前环境未执行任何激活操作。
+实机验收需覆盖：中文字体与输出、UAC、独立控制台交互与退出、各 Office 安装布局、各激活方式前后的许可证状态，以及历史 Windows 上的 KMS38。开发环境未执行任何激活操作；用户已反馈 v0.2.0 测试工作正常，具体覆盖范围待补充。
 
 ## 反馈与贡献
 

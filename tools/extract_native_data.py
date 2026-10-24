@@ -1,0 +1,23 @@
+"""Extract public MAS lookup/signing data without executing upstream code."""
+from pathlib import Path
+import re
+ROOT = Path(__file__).resolve().parents[1]
+DEST = ROOT / 'vendor/mas/native'
+DEST.mkdir(exist_ok=True)
+current = (ROOT / 'vendor/mas/MAS_AIO.cmd').read_text()
+legacy = (ROOT / 'vendor/mas/KMS38_Activation.cmd').read_text()
+for name, source, label in [('hwid', current, 'hwiddata'), ('kms38', legacy, 'kms38data')]:
+    section = source.split('\n:' + label + '\n', 1)[1].split(') do (', 1)[0]
+    rows = []
+    for line in section.splitlines():
+        if re.match(r'^[0-9a-f]{8}-', line):
+            rows.append('\t'.join(re.split('_+', line.replace('%f%', ''))))
+    (DEST / (name + '.tsv')).write_text('\n'.join(rows) + '\n')
+    section = source.split('\n:' + name + 'fallback\n', 1)[1].split(') do (', 1)[0]
+    rows = ['\t'.join(re.split('_+', line.replace('%f%', ''))) for line in section.splitlines() if re.match(r'^\d+_', line)]
+    (DEST / (name + '-fallback.tsv')).write_text('\n'.join(rows) + '\n')
+section = current.split('[byte[]] $key =', 1)[1].split('$rsa =', 1)[0]
+blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
+assert len(blob) == 596
+(DEST / 'ticket-key.blob').write_bytes(blob)
+print('Extracted HWID/KMS38 tables, fallbacks and the upstream public signing blob.')

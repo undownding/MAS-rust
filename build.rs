@@ -10,7 +10,7 @@ fn main() {
             .set("LegalCopyright", "MAS Rust contributors")
             .set_manifest(
                 r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="0.1.0.0" processorArchitecture="*" name="MAS.Rust" type="win32"/>
+  <assemblyIdentity version="0.2.0.0" processorArchitecture="*" name="MAS.Rust" type="win32"/>
   <description>MAS Rust</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
