@@ -26,3 +26,7 @@ verbatim from the public `LibTSforge.Crypto.Keys` constants in the pinned
 `tools/extract_native_data.py` reproduces the extraction. The Rust TSforge
 storage codecs and crypto envelope are derived from the corresponding
 LibTSforge classes in that same GPL-3.0 source.
+
+`native/tsforge-hwid.bin` is the 38-byte `UniversalHWIDBlock` constant
+from the same pinned LibTSforge source, reproduced by
+`tools/extract_native_data.py`; it is not hardware data collected from a user.

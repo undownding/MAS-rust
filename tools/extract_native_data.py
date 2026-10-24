@@ -56,3 +56,8 @@ for name in ('PRODUCTION', 'TEST'):
     blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
     assert len(blob) == 596
     (DEST / ('tsforge-' + name.lower() + '.blob')).write_bytes(blob)
+
+section = current.split('public static readonly byte[] UniversalHWIDBlock =', 1)[1].split('};', 1)[0]
+blob = bytes(int(x, 16) for x in re.findall(r'0x([0-9A-Fa-f]{2})', section))
+assert len(blob) == 38
+(DEST / 'tsforge-hwid.bin').write_bytes(blob)

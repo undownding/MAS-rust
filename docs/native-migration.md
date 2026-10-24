@@ -274,3 +274,12 @@ PKEY2009 安装按上游先卸载当前产品密钥、再调用 SLInstallProofOf
 新增 MPC 构建边界、setup 覆盖及日期闰年规则测试，以及检查点无实时写入测试；92 项本地测试和双平台 Clippy 通过。Windows 专用测试新增生产/测试密钥下的加密安装计划、损坏令牌拒绝、setup 编码及空注册表恢复测试，不执行真实许可安装。
 
 Windows CI 40116625651 的只读准备测试发现某些 SKU 没有密钥映射时返回 `SL_E_VALUE_NOT_FOUND`。按 [SLGetSLIDList 官方文档](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetslidlist)，将这一精确状态映射为空列表，访问拒绝/不支持等错误继续保留；新增针对性回归测试。修复仍待新 Windows CI。GUI 联合恢复 CI 40116291401 已成功。后续继续连接完整 TSforge 激活流程；本轮没有新增可点击安装入口，不更新截图或测试包。
+
+
+### IID 参数、Unique ID 与 ZeroCID（进行中）
+
+新增 `phone.rs` 和 `phone_runtime.rs`：移植现代存储的 SetIIDParams、UniqueIdDelete 与 ZeroCID 缓存结构。IID 参数复用 PKEY2005/PKEY2009 电话数据编码，保持升级位关闭；Unique ID/Virtual 字段只删除首条，保留其他字段。ZeroCID 使用 UTF-16 的 IID、NUL 分隔符、48 位零 CID 和最终 NUL 计算 SHA-256，再构造带长度的 HWID/PKeyInfo 缓存记录。公共 38 字节 UniversalHWIDBlock 从固定上游原样提取，来源及复现工具已记录。
+
+修改先在副本完成并重新解析校验；缺失/歧义目标、缺少电话数据、无效 IID 或超出字段位宽时拒绝，不静默报告完成。原生运行层先检查产品电话许可和唯一已安装密钥，通过独占文件事务保存备份、改写并验证加密，随后提交确认 ID、刷新许可状态、触发状态事件并核对所选产品是否已许可。后续 API 失败明确报告存储已修改及备份路径。
+
+`tools/tsforge_phone_vectors.py` 独立生成缓存向量，三项新增本地测试覆盖二进制布局、未知字段保留、重复执行、目标歧义和无副作用拒绝；95 项本地测试及双平台 Clippy 通过。当前仅支持现代存储布局（运行时 build 9600+），Vista/7 分支仍待迁移。SCID Web 服务、KMS4k 和激活产品选择尚待接入，GUI 激活按钮仍走兼容路径；本轮没有运行真实系统的 ZeroCID 激活。
