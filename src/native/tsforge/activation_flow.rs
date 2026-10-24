@@ -35,6 +35,24 @@ impl Method {
     }
 }
 
+pub fn generated_supported(
+    version: super::crypto::Version,
+    method: Method,
+    pkey2005_gvlk: bool,
+) -> Result<(), String> {
+    use super::crypto::Version;
+    if version == Version::Vista {
+        return Err("Vista 须使用固定目录密钥，不支持生成密钥安装。".into());
+    }
+    if version == Version::Win7 && method == Method::StaticCid {
+        return Err("StaticCID 需要 Windows 8 或更高版本。".into());
+    }
+    if version == Version::Win7 && pkey2005_gvlk {
+        return Err("Win7 不支持生成 PKEY2005 GVLK；须使用固定目录密钥，未清理配置或安装。".into());
+    }
+    Ok(())
+}
+
 pub fn skip_permanent(build: u32, revision: u32, permanent: bool) -> bool {
     permanent && !(build == 26100 && revision < 4188)
 }
@@ -101,7 +119,8 @@ pub struct Native<'a> {
 impl Backend for Native<'_> {
     fn preflight(&mut self, sku: Uuid, method: Method) -> Result<(), String> {
         use windows_sys::core::GUID;
-        super::runtime::preflight()?;
+        let layout = super::runtime::storage_preflight()?;
+        generated_supported(layout.version, method, false)?;
         let context = super::sl::Context::open().map_err(|e| e.to_string())?;
         let id = GUID::from_u128(sku.as_u128());
         let app = context
@@ -130,6 +149,13 @@ impl Backend for Native<'_> {
                 prepared.product.channel
             ));
         }
+        let version = super::runtime::storage_preflight()?.version;
+        generated_supported(
+            version,
+            Method::ZeroCid,
+            matches!(prepared.key, super::generated_key::Generated::Pkey2005(_))
+                && prepared.product.channel.eq_ignore_ascii_case("Volume:GVLK"),
+        )?;
         Ok(prepared)
     }
     fn install(&mut self, prepared: &Prepared) -> Result<(), String> {
@@ -269,6 +295,19 @@ mod tests {
             self.step("activate")?;
             Ok("verified".into())
         }
+    }
+    #[test]
+    fn generated_key_version_rules_reject_unsupported_paths_before_install() {
+        use super::super::crypto::Version;
+        for method in [Method::StaticCid, Method::ZeroCid, Method::Kms4k] {
+            assert!(generated_supported(Version::Vista, method, false).is_err());
+            assert!(generated_supported(Version::Win7, method, true).is_err());
+            for version in [Version::Win8, Version::WinBlue, Version::Modern] {
+                assert!(generated_supported(version, method, true).is_ok());
+            }
+        }
+        assert!(generated_supported(Version::Win7, Method::StaticCid, false).is_err());
+        assert!(generated_supported(Version::Win7, Method::ZeroCid, false).is_ok());
     }
     #[test]
     fn methods_and_permanent_activation_boundaries() {

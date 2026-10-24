@@ -56,6 +56,25 @@ pub fn select(
             && installed.contains(&product.id)
     })
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyRoute {
+    Fixed(Method),
+    Generated,
+}
+pub fn key_route(
+    version: Version,
+    method: super::activation_flow::Method,
+) -> Result<KeyRoute, String> {
+    use super::activation_flow::Method as Activation;
+    if matches!(version, Version::Vista | Version::Win7) && method == Activation::StaticCid {
+        return Err("StaticCID 需要 Windows 8 或更高版本。".into());
+    }
+    Ok(match (version, method) {
+        (Version::Vista | Version::Win7, Activation::Kms4k) => KeyRoute::Fixed(Method::Kms),
+        (Version::Vista, Activation::ZeroCid) => KeyRoute::Fixed(Method::Phone),
+        _ => KeyRoute::Generated,
+    })
+}
 pub struct Installed {
     pub id: Uuid,
     pub suffix: String,
@@ -141,6 +160,34 @@ mod tests {
                     self.product.channel.into()
                 },
             })
+        }
+    }
+    #[test]
+    fn method_and_version_select_fixed_or_generated_key_without_fallback() {
+        use super::super::activation_flow::Method as Activation;
+        assert_eq!(
+            key_route(Version::Vista, Activation::ZeroCid).unwrap(),
+            KeyRoute::Fixed(Method::Phone)
+        );
+        for version in [Version::Vista, Version::Win7] {
+            assert_eq!(
+                key_route(version, Activation::Kms4k).unwrap(),
+                KeyRoute::Fixed(Method::Kms)
+            );
+            assert!(key_route(version, Activation::StaticCid).is_err());
+        }
+        assert_eq!(
+            key_route(Version::Win7, Activation::ZeroCid).unwrap(),
+            KeyRoute::Generated
+        );
+        for version in [Version::Win8, Version::WinBlue, Version::Modern] {
+            for method in [
+                Activation::StaticCid,
+                Activation::ZeroCid,
+                Activation::Kms4k,
+            ] {
+                assert_eq!(key_route(version, method).unwrap(), KeyRoute::Generated);
+            }
         }
     }
     #[test]
