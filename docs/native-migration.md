@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 重置已接入 Rust；SCID/ZCID/KMS4k 等激活仍为兼容后端 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows 单项（build 9600+ 非评估版）及重置已接入 Rust；其他范围仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 激活方法、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
+- TSforge 的 Office/ESU/组合/KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -349,3 +349,14 @@ SKU 表未命中时，从 System32 加载 pkeyhelper.dll 调用 GetEditionNameFr
 只读准备连接了前两轮的 Edition/方法规则和产品选择器，显式返回评估版、已永久激活、旧版存储或现代待激活 SKU/方法，避免将评估版直接送入生成密钥安装。GUI 调度和 KMS 缓存清理仍待接入，此轮不执行安装或激活。
 
 116 项本地测试及双平台 Clippy 通过；新增 Windows 专用测试覆盖订阅指针替换/错误/空结果、真实系统上下文、真实 pkeyhelper 名称查询和评估/永久/旧版准备分支，待本次 Windows CI 验证。产品选择迁移 CI 40119071973 已成功，执行链 CI 40119405069 仍在运行。界面及测试包未改变。
+
+
+### Windows 原生 GUI 入口与 KMS 配置清理（v0.6.0-dev.4）
+
+Windows 单项按钮现已接入系统上下文、产品选择、密钥安装和三种激活后端；build 9600+ 非评估版走 Rust，旧版/评估版明确转入兼容入口。原生错误不会触发第二次兼容激活。已有永久许可按上游 UBR 例外规则处理；跳过时不清理 KMS 配置。其他 TSforge 范围仍使用兼容入口。
+
+新增 `kms_cleanup.rs` 迁移 `_taskclear-cache` 的 32/64 位全局值、应用子项、NetworkService 配置以及三个固定 IFEO 子项，并保留 Vista/7/8/8.1 的构建分支。KMS4k 在只读准备成功后、安装密钥之前执行；预先打开全部已有父项，缺失项跳过，权限错误报告，删除后逐项回读验证。删除失败明确报告已完成数量，不静默继续或声称配置已恢复。这些配置删除不在存储/产品注册表备份范围内。
+
+117 项本地测试和双平台 Clippy 通过，新增清理目标构建/视图边界测试及 Windows 临时 HKCU 的嵌套删除、幂等与无关数据保留测试。执行链 Windows CI 40119405069 已成功；系统上下文 CI 40119757455 中真实上下文和订阅内存测试通过，pkeyhelper 测试因返回小写 `professional` 而失败；运行时本就忽略大小写，本轮将测试改为相同语义，并补充大小写回退测试，待新 CI。原生激活未进行真实系统验收。
+
+GUI 范围标签、README、版本号同步至 dev.4；更新真实 Linux 预览截图并构建 Windows 本地测试包。此轮只启用 Windows 单项现代分支，不代表 ESU/Office、旧存储、修复及高级菜单已经完成迁移。

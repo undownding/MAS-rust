@@ -67,6 +67,9 @@ mod product_selection;
 mod selection_runtime;
 
 mod activation_flow;
+mod kms_cleanup;
 #[cfg(windows)]
 mod windows_context;
+#[cfg(windows)]
+pub use windows_context::activate as activate_windows;
 mod windows_edition;

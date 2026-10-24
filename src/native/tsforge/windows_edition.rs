@@ -80,6 +80,10 @@ mod tests {
             Some("Enterprise")
         );
         assert_eq!(edition(9999, &families, Some("Professional")), None);
+        assert_eq!(
+            edition(9999, &families, Some("enterprise")).as_deref(),
+            Some("enterprise")
+        );
         for line in EDITIONS.lines() {
             let (sku, name) = line.split_once('\t').unwrap();
             assert_eq!(

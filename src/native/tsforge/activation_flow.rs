@@ -75,9 +75,9 @@ pub fn run(backend: &mut impl Backend, sku: Uuid, method: Method) -> Result<Stri
 }
 
 #[cfg(windows)]
-#[allow(dead_code)] // Constructed by the upcoming product-scope dispatcher.
 pub struct Native<'a> {
     pub report: &'a dyn Fn(&str),
+    pub cleanup_build: Option<u32>,
 }
 #[cfg(windows)]
 impl Backend for Native<'_> {
@@ -106,6 +106,9 @@ impl Backend for Native<'_> {
         super::generated_key::prepare(&context, sku).map_err(|e| e.to_string())
     }
     fn install(&mut self, prepared: &Prepared) -> Result<(), String> {
+        if let Some(build) = self.cleanup_build.take() {
+            super::kms_cleanup::clear(build, self.report)?;
+        }
         match prepared.key {
             super::generated_key::Generated::Pkey2005(_) => {
                 let message = super::key_runtime::install(prepared, self.report)?;

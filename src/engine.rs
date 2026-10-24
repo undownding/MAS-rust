@@ -189,6 +189,12 @@ pub fn run(_op: Operation, _options: Options, _report: &dyn Fn(&str)) -> Result<
 #[cfg(windows)]
 pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<String, String> {
     let _guard = crate::native::session::OperationGuard::acquire()?;
+    if op.args == ["/Z-Windows"] {
+        return match crate::native::tsforge::activate_windows(options.ts_method, report)? {
+            Some(result) => Ok(result),
+            None => run_compatibility(op, options, report),
+        };
+    }
     if op.args == ["/Z-Reset"] {
         return crate::native::tsforge::reset(report);
     }
@@ -225,8 +231,10 @@ pub fn restore_tsforge(backup: &str, report: &dyn Fn(&str)) -> Result<String, St
 }
 
 pub fn is_native(op: Operation) -> bool {
-    matches!(op.args, ["/Ohook"] | ["/Ohook-Uninstall"] | ["/Z-Reset"])
-        || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
+    matches!(
+        op.args,
+        ["/Ohook"] | ["/Ohook-Uninstall"] | ["/Z-Reset"] | ["/Z-Windows"]
+    ) || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
 }
 
 #[cfg(windows)]
@@ -361,6 +369,7 @@ mod tests {
                     op.args,
                     ["/HWID"]
                         | ["/Z-Reset"]
+                        | ["/Z-Windows"]
                         | ["/Ohook"]
                         | ["/Ohook-Uninstall"]
                         | ["/KMS38"]

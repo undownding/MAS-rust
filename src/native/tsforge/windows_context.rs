@@ -309,6 +309,51 @@ pub fn plan(context: &Context, option: usize) -> Result<Plan, String> {
     Ok(Plan::Activate { sku, method })
 }
 
+/// Called under engine's OperationGuard. None explicitly requests legacy/eval
+/// compatibility; native errors never trigger a second, compatibility attempt.
+pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
+    if !crate::process::is_admin() {
+        return Err("请以管理员身份运行".into());
+    }
+    if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|v| !v.is_empty()) {
+        return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
+    }
+    let context = Context::read(report)?;
+    report(&format!(
+        "Windows {} · build {}.{} · SKU {}",
+        context.edition, context.build, context.revision, context.sku
+    ));
+    if context.subscription_active && context.slc_sku != Some(context.sku) {
+        report(&format!(
+            "订阅版基础 SKU：{:?} → {}",
+            context.slc_sku, context.sku
+        ));
+    }
+    match plan(&context, option)? {
+        Plan::Evaluation => {
+            report("评估版 Windows 的重置/联网激活仍使用兼容引擎。");
+            Ok(None)
+        }
+        Plan::Legacy => {
+            report("此 Windows 存储版本尚未接入原生激活，使用兼容引擎。");
+            Ok(None)
+        }
+        Plan::AlreadyPermanent => Ok(Some("Windows 已永久激活，未修改许可或 KMS 配置。".into())),
+        Plan::Activate { sku, method } => {
+            report(&format!("原生 Rust TSforge：{sku} · {method:?}"));
+            let mut backend = activation_flow::Native {
+                report,
+                cleanup_build: if method == Method::Kms4k {
+                    Some(context.build)
+                } else {
+                    None
+                },
+            };
+            activation_flow::run(&mut backend, sku, method).map(Some)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,7 +417,11 @@ mod tests {
     }
     #[test]
     fn system_edition_helper_is_read_only() {
-        assert_eq!(helper_edition(48).unwrap(), "Professional");
+        assert!(
+            helper_edition(48)
+                .unwrap()
+                .eq_ignore_ascii_case("Professional")
+        );
     }
     #[test]
     fn eval_and_permanent_do_not_select_a_product() {
