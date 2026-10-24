@@ -537,3 +537,11 @@ Win7 ZeroCID 缓存使用 UTF-16 终止的安装 ID 计算 SHA-256，不追加�
 172 项 Linux 测试及双目标 Clippy 通过。Python 独立向量脚本新增 phone-win7.json，核对两个缓存的精确字节；测试覆盖两个密钥算法、字段保留、幂等、容器回读、跨产品隔离和重复密钥拒绝。Windows 双文件事务 CI 40125813195 与 dev.11 CI 40126071956 仍在运行。
 
 此轮只迁移存储修改后端；Vista 的 PKeyBasicInfo 提取、旧版先提交确认 ID 再修改存储的顺序，以及密钥安装/激活分派仍需连接。旧版激活入口继续兼容路径，GUI/截图和 dev.11 测试包未变。
+
+### Vista 电话缓存格式（进行中）
+
+扩展 `phone.rs` 的 ZeroCID 存储修改至 Vista：使用 Vista variable-bag CRC/保留字段格式，从 PKeyBasicInfo 的 0x120 与 0x1a0 定长 UTF-16 区域读取 Unique ID 和 Extended PID；校验组号和 Base64 后合成 8 字节短认证数据。Vista 按上游只取安装 ID 哈希的前 16 字节，缓存名称采用 6.0 与 Activation ID，不误用 Win7/现代的密钥 ID；Vista 容器不存储产品路径字段。
+
+新增 Python 独立 phone-vista.json 向量，精确核对基本数据、认证结果和两种缓存字节。175 项 Linux 测试及双目标 Clippy 通过，覆盖保留字段/未知记录、幂等与容器回读，以及截断、非法 UTF-16、零/溢出组号、损坏/过短 Base64、CRC 错误和重复密钥拒绝。Vista 的 IID 参数和 Unique ID 修改按上游明确不支持，提前返回错误。
+
+Windows 双文件事务 CI 40125813195、dev.11 CI 40126071956 与 Win7 电话记录 CI 40126263402 仍在运行。此轮没有真实激活或许可存储写入；旧版先提交确认 ID 再修改存储的执行顺序、原生密钥安装和入口分派仍待连接。GUI、截图与 dev.11 测试包未变。

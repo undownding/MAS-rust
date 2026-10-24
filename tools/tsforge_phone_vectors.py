@@ -21,3 +21,20 @@ shortauth = bytes.fromhex('0102030405060708')
     'iid': iid, 'hash': digest.hex(), 'hwid_cache': frame(hwid).hex(),
     'key_cache': frame(shortauth).hex()
 }, indent=2) + '\n')
+# Vista uses the first 16 hash bytes and derives auth from fixed PKeyBasicInfo fields.
+import base64
+digest = hashlib.sha256((iid + '\0').encode('utf-16le')).digest()[:16]
+auth = 0x123456789A
+group = 12345
+basic = bytearray(0x220)
+unique = 'prefix&' + base64.b64encode(struct.pack('<Q', auth)).decode()
+pid = f'55041-{group}-000-000000-00-0000-0000.0000-0000000'
+for offset, text in [(0x120, unique), (0x1a0, pid)]:
+    encoded = (text + '\0').encode('utf-16le')
+    assert len(encoded) <= 0x80
+    basic[offset:offset + len(encoded)] = encoded
+shortauth = struct.pack('<Q', auth | (group << 41))
+(root / 'tests/fixtures/tsforge/phone-vista.json').write_text(json.dumps({
+    'iid': iid, 'basic': basic.hex(), 'phone_data': shortauth.hex(),
+    'hwid_cache': frame(hwid).hex(), 'key_cache': frame(shortauth).hex()
+}, indent=2) + '\n')
