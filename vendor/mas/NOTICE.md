@@ -34,3 +34,8 @@ from the same pinned LibTSforge source, reproduced by
 `native/tsforge-activation-mac.bin` is the public 64-byte ActivationWs
 MacKey constant from the pinned script, extracted by the same tool. It is
 protocol data from upstream, not an account credential or locally obtained secret.
+
+`native/tsforge-kms-v4.bin`, `tsforge-kms-v5.bin`, and `tsforge-kms-v6.bin`
+are the pinned public KMS response constants used by LibTSforge. Extraction
+is reproducible with `tools/extract_native_data.py`; they are not responses
+collected from a user's KMS service.

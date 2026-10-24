@@ -51,3 +51,8 @@ mod activation_http;
 
 #[cfg(windows)]
 mod static_cid;
+
+mod kms4k;
+
+#[cfg(windows)]
+mod kms4k_runtime;

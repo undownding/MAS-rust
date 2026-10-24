@@ -66,3 +66,9 @@ section = current.split('MacKey = new byte[64] {', 1)[1].split('};', 1)[0]
 blob = bytes(int(value) for value in re.findall(r'\d+', section))
 assert len(blob) == 64
 (DEST / 'tsforge-activation-mac.bin').write_bytes(blob)
+
+for version in (4, 5, 6):
+    section = current.split(f'public static readonly byte[] KMSv{version}Response =', 1)[1].split('};', 1)[0]
+    blob = bytes(int(value, 16) for value in re.findall(r'0x([0-9a-fA-F]{2})', section))
+    assert blob[:4] == bytes([0, 0, version, 0])
+    (DEST / f'tsforge-kms-v{version}.bin').write_bytes(blob)
