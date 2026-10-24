@@ -126,6 +126,10 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 - 加密封装实现 RSA PKCS#1 v1.5/SHA-1、AES-CBC/PKCS7（读取 128/192/256 位密钥）、Vista 盐化 SHA-1 和后续版本 HMAC-SHA1。生产/测试 RSA blob 来自固定上游公开常量；复用已验证的 CSP blob 解析器。新封装使用系统随机源，私钥解密使用 RSA blinding。
 - 封装解析检查版本、`UNTRUSTSTORE` 标记、RSA 签名及完整性校验；当前拒绝未知头部或非零保留字段。未知格式必须显式扩展后才可写入，不自动猜测。
 - `tools/tsforge_codec_vectors.py` 用独立多项式除法生成格式向量；`tools/tsforge_crypto_vectors.py` 用 Python cryptography/OpenSSL 生成确定性的加密样本，覆盖两套公开密钥、三种 AES 长度及两种完整性算法。样本完全合成，不包含机器许可数据。固定 RSA 填充仅用于测试向量。
-- **模块目前仅在测试构建中启用，加密依赖暂列 dev-dependencies；GUI 的 TSforge 路由仍为兼容模式。** 还需 TokenStore、SL API、产品密钥配置、备份/恢复和写入事务，之后逐项接入 SCID/ZCID/KMS4k。未宣称 TSforge 激活已原生化。
+- **模块目前仅在测试构建中启用，加密依赖暂列 dev-dependencies；GUI 的 TSforge 路由仍为兼容模式。** 还需真实 TokenStore 布局兼容性验证、SL API、产品密钥配置、备份/恢复和写入事务，之后逐项接入 SCID/ZCID/KMS4k。未宣称 TSforge 激活已原生化。
 
 上一轮 Ohook 修复的 Windows CI [40109703595](https://github.com/undownding/MAS-rust/actions/runs/40109703595) 已全部通过。
+
+同日继续迁移 `TokenStoreModern` 和 `TokenMeta`：实现目录块链接、固定 UTF-16 字段、内容记录和元数据编解码，并核对文件/块/内容 SHA-256。合成双块样本包含中文、代理对、具名未填充项、零字节内容及重复元数据键。测试覆盖循环链、错误偏移、篡改、截断、字段超长，以及 103 项块边界的重复序列化稳定性。
+
+当前 TokenStore 解析器只接受完整、无间隙、分配长度等于内容长度的规范布局；对于未识别的空闲空间、孤立内容、字段尾部、非规范未填充项或未知版本明确拒绝。此限制是避免静默丢弃未知数据，**不能据此宣称已支持真实系统的所有 tokens.dat**。序列化不重复添加多余空块，保留已有完整槽位数量；对应上游每次在整块边界附加一个空块的行为差异已通过稳定性测试。尚未对系统 tokens.dat 执行读取或写入。

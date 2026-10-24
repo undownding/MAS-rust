@@ -14,3 +14,8 @@ unknown fields, duplicate modern keys and multiple groups. Envelopes cover
 Vista/Windows 7/modern headers, production/test RSA keys, AES-128/192/256, and
 salted SHA-1 versus HMAC-SHA1. Format and crypto fixtures are synthetic and do
 not establish compatibility with all real Windows stores.
+
+`python3 tools/tsforge_token_vectors.py` regenerates `tokens-modern.bin` and
+`token-meta.bin` with Python's hashlib/struct (no external dependency). These
+cover two directory blocks, named inactive slots, Unicode surrogate pairs,
+empty populated content and duplicate metadata keys.

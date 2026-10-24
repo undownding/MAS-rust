@@ -3,4 +3,5 @@
 mod binary;
 mod crypto;
 mod physical;
+mod token;
 mod variable_bag;
