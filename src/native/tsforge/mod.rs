@@ -67,4 +67,6 @@ mod product_selection;
 mod selection_runtime;
 
 mod activation_flow;
+#[cfg(windows)]
+mod windows_context;
 mod windows_edition;
