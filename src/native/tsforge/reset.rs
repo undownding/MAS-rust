@@ -78,13 +78,16 @@ pub fn apply(store: &mut Store, step: Step) -> usize {
     changes
 }
 
-/// Authenticated read/modify/write for the modern store used since build 9600.
-/// Unknown formats fail before the transaction can write any replacement.
+/// Keep modern callers explicit while sharing authenticated decoding with legacy
+/// layouts. Build 9600 uses Modern (version 3), not the dormant WinBlue envelope.
 pub fn decode_modern(original: &[u8]) -> std::io::Result<(Store, bool)> {
-    use super::crypto::{self, Version};
-    let (plaintext, production) = match crypto::decrypt(original, true, Version::Modern) {
+    decode(original, super::crypto::Version::Modern)
+}
+pub fn decode(original: &[u8], version: super::crypto::Version) -> std::io::Result<(Store, bool)> {
+    use super::crypto;
+    let (plaintext, production) = match crypto::decrypt(original, true, version) {
         Ok(data) => (data, true),
-        Err(production_error) => match crypto::decrypt(original, false, Version::Modern) {
+        Err(production_error) => match crypto::decrypt(original, false, version) {
             Ok(data) => (data, false),
             Err(test_error) => {
                 return Err(std::io::Error::other(format!(
@@ -93,25 +96,49 @@ pub fn decode_modern(original: &[u8]) -> std::io::Result<(Store, bool)> {
             }
         },
     };
-    Ok((Store::decode(&plaintext, Format::Modern)?, production))
+    Ok((Store::decode(&plaintext, version.format())?, production))
 }
-
 pub fn transform(original: &[u8], step: Step) -> std::io::Result<(Vec<u8>, usize)> {
-    use super::crypto::{self, Version};
-    let (mut store, production) = decode_modern(original)?;
+    transform_version(original, step, super::crypto::Version::Modern)
+}
+pub fn transform_version(
+    original: &[u8],
+    step: Step,
+    version: super::crypto::Version,
+) -> std::io::Result<(Vec<u8>, usize)> {
+    use super::crypto;
+    let (mut store, production) = decode(original, version)?;
     let changed = apply(&mut store, step);
     if changed == 0 {
         return Ok((original.to_vec(), 0));
     }
     let encoded = store.encode()?;
-    if Store::decode(&encoded, Format::Modern)? != store {
+    if Store::decode(&encoded, version.format())? != store {
         return Err(std::io::Error::other("存储序列化校验失败"));
     }
-    let encrypted = crypto::encrypt(&encoded, production, Version::Modern)?;
-    if crypto::decrypt(&encrypted, production, Version::Modern)? != encoded {
+    let encrypted = crypto::encrypt(&encoded, production, version)?;
+    if crypto::decrypt(&encrypted, production, version)? != encoded {
         return Err(std::io::Error::other("存储加密校验失败"));
     }
     Ok((encrypted, changed))
+}
+/// Vista/7 use the primary file as input and mirror changed ciphertext to both
+/// files. No fallback to a corrupt/different secondary; both originals belong in
+/// the transaction backup. Even with zero changed records the secondary must
+/// mirror the primary; callers must not infer no file changes from the count.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn transform_files(
+    originals: &[&[u8]],
+    step: Step,
+    version: super::crypto::Version,
+) -> std::io::Result<(Vec<Vec<u8>>, usize)> {
+    let expected = if version.paired() { 2 } else { 1 };
+    if originals.len() != expected {
+        return Err(std::io::Error::other("许可存储文件数量与版本不符"));
+    }
+    let (changed, count) = transform_version(originals[0], step, version)?;
+    let files = vec![changed; expected];
+    Ok((files, count))
 }
 
 #[cfg(test)]
@@ -192,6 +219,7 @@ mod tests {
             .unwrap();
             original.groups[0][0].blocks.last_mut().unwrap().data = vec![0; 8];
             assert_eq!(actual, original);
+            assert_eq!(decode_modern(&output).unwrap().0, actual);
             let (again, count) = transform(&output, Step::RearmAndGrace).unwrap();
             assert_eq!(count, 0);
             assert_eq!(again, output);
@@ -199,6 +227,117 @@ mod tests {
             corrupt[16] ^= 1;
             assert!(transform(&corrupt, Step::RearmAndGrace).is_err());
         }
+    }
+    #[test]
+    fn version_detection_preserves_upstream_build_boundaries() {
+        use super::super::crypto::Version;
+        for (build, version) in [
+            (6000, Version::Vista),
+            (6003, Version::Vista),
+            (7600, Version::Win7),
+            (7602, Version::Win7),
+            (9200, Version::Win8),
+            (9600, Version::Modern),
+            (26100, Version::Modern),
+        ] {
+            assert_eq!(Version::detect(build).unwrap(), version);
+        }
+        for build in [0, 5999, 6004, 7599, 7603, 9199, 9201, 9599] {
+            assert!(Version::detect(build).is_err());
+        }
+    }
+    #[test]
+    fn legacy_encrypted_reset_preserves_layout_and_mirrors_primary() {
+        use super::super::crypto::{self, Version};
+        for version in [
+            Version::Vista,
+            Version::Win7,
+            Version::Win8,
+            Version::WinBlue,
+        ] {
+            for production in [false, true] {
+                let block = match version {
+                    Version::Vista => text("740D70D8-6448-4b2f-9063-4A7A463600C5"),
+                    Version::Win7 => block(0xa0000u32.to_le_bytes().to_vec()),
+                    _ => text("__##USERSEP-RESERVED##__$$REARM-COUNT$$"),
+                };
+                let mut store = Store {
+                    header: [0; 8],
+                    format: version.format(),
+                    blocks: vec![],
+                    groups: vec![],
+                };
+                if version.format() == Format::Modern {
+                    store.groups.push(vec![Key {
+                        name: vec![65, 0],
+                        blocks: vec![block],
+                    }]);
+                } else {
+                    store.blocks.push(block);
+                }
+                let primary =
+                    crypto::encrypt(&store.encode().unwrap(), production, version).unwrap();
+                let secondary = b"different original backup bytes";
+                let mut inputs = vec![primary.as_slice()];
+                if version.paired() {
+                    inputs.push(secondary);
+                }
+                let (outputs, count) =
+                    transform_files(&inputs, Step::RearmAndGrace, version).unwrap();
+                assert_eq!(count, 1);
+                assert_eq!(outputs.len(), inputs.len());
+                assert!(outputs.iter().all(|out| out == &outputs[0]));
+                apply(&mut store, Step::RearmAndGrace);
+                assert_eq!(decode(&outputs[0], version).unwrap().0, store);
+                let mut inputs = vec![outputs[0].as_slice()];
+                if version.paired() {
+                    inputs.push(secondary);
+                }
+                let (unchanged, count) =
+                    transform_files(&inputs, Step::RearmAndGrace, version).unwrap();
+                assert_eq!(count, 0);
+                assert!(unchanged.iter().all(|bytes| bytes == &outputs[0]));
+                assert!(transform_files(&[], Step::RearmAndGrace, version).is_err());
+                let mut corrupt = primary.clone();
+                corrupt[16] ^= 1;
+                let mut bad = vec![corrupt.as_slice()];
+                if version.paired() {
+                    bad.push(&primary);
+                }
+                assert!(transform_files(&bad, Step::RearmAndGrace, version).is_err());
+            }
+        }
+    }
+    #[test]
+    fn paired_reset_transaction_backs_up_distinct_originals_before_mirroring() {
+        use super::super::{
+            crypto::{self, Version},
+            transaction::Transaction,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let paths = vec![dir.path().join("primary"), dir.path().join("secondary")];
+        let store = Store {
+            header: [0; 8],
+            format: Format::Win7,
+            groups: vec![],
+            blocks: vec![block(0xa0000u32.to_le_bytes().to_vec())],
+        };
+        let primary = crypto::encrypt(&store.encode().unwrap(), true, Version::Win7).unwrap();
+        let secondary = b"old secondary snapshot";
+        std::fs::write(&paths[0], &primary).unwrap();
+        std::fs::write(&paths[1], secondary).unwrap();
+        let transaction = Transaction::edit(paths.clone(), |originals| {
+            transform_files(originals, Step::RearmAndGrace, Version::Win7).map(|(files, _)| files)
+        })
+        .unwrap();
+        let backup = transaction.backup_path().to_owned();
+        assert_eq!(std::fs::read(backup.join("0.original")).unwrap(), primary);
+        assert_eq!(std::fs::read(backup.join("1.original")).unwrap(), secondary);
+        transaction.commit().unwrap();
+        let a = std::fs::read(&paths[0]).unwrap();
+        assert_eq!(a, std::fs::read(&paths[1]).unwrap());
+        assert_eq!(decode(&a, Version::Win7).unwrap().0.blocks[0].data, [0; 8]);
+        assert_eq!(std::fs::read(backup.join("1.original")).unwrap(), secondary);
     }
     #[test]
     fn legacy_reset_uses_version_specific_identifiers() {

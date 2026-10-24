@@ -11,7 +11,7 @@ use rsa::{
 use sha1::{Digest, Sha1};
 use std::io::Result;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(
     not(test),
     allow(
@@ -28,6 +28,25 @@ pub enum Version {
 }
 
 impl Version {
+    pub fn detect(build: u32) -> Result<Self> {
+        match build {
+            6000..=6003 => Ok(Self::Vista),
+            7600..=7602 => Ok(Self::Win7),
+            9200 => Ok(Self::Win8),
+            9600.. => Ok(Self::Modern),
+            _ => Err(invalid("unsupported Windows physical-store build")),
+        }
+    }
+    pub fn format(self) -> super::physical::Format {
+        match self {
+            Self::Vista => super::physical::Format::Vista,
+            Self::Win7 => super::physical::Format::Win7,
+            _ => super::physical::Format::Modern,
+        }
+    }
+    pub fn paired(self) -> bool {
+        matches!(self, Self::Vista | Self::Win7)
+    }
     fn number(self) -> u32 {
         match self {
             Self::Vista | Self::WinBlue => 2,

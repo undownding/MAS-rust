@@ -80,7 +80,8 @@ pub(super) fn preflight() -> Result<PathBuf, String> {
         .ok_or("缺少 Windows 构建号")?
         .parse()
         .map_err(|_| "Windows 构建号无效")?;
-    if build < 9600 {
+    let version = super::crypto::Version::detect(build).map_err(|e| e.to_string())?;
+    if version != super::crypto::Version::Modern {
         return Err("原生 TSforge 存储操作尚未接入 Vista/Windows 7/8 的存储与服务布局。".into());
     }
     sl::ensure_refresh_available().map_err(|error| error.to_string())?;
