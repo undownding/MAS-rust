@@ -72,3 +72,9 @@ for version in (4, 5, 6):
     blob = bytes(int(value, 16) for value in re.findall(r'0x([0-9a-fA-F]{2})', section))
     assert blob[:4] == bytes([0, 0, version, 0])
     (DEST / f'tsforge-kms-v{version}.bin').write_bytes(blob)
+
+# Preserve table order: current edition names precede legacy aliases for one SKU.
+section = current.split('\n:ts_getedition\n', 1)[1].split(') do (', 1)[0]
+rows = [line.replace(':', '\t', 1) for line in section.splitlines() if re.fullmatch(r'\d+:[A-Za-z0-9_]+', line)]
+assert len(rows) > 180
+(DEST / 'tsforge-editions.tsv').write_text('\n'.join(rows) + '\n')

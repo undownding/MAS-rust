@@ -65,3 +65,6 @@ mod host_runtime;
 mod product_selection;
 #[cfg(windows)]
 mod selection_runtime;
+
+mod activation_flow;
+mod windows_edition;

@@ -39,3 +39,5 @@ protocol data from upstream, not an account credential or locally obtained secre
 are the pinned public KMS response constants used by LibTSforge. Extraction
 is reproducible with `tools/extract_native_data.py`; they are not responses
 collected from a user's KMS service.
+
+`native/tsforge-editions.tsv` preserves the SKU/edition table and legacy alias order from the pinned `:ts_getedition:` section, extracted by `tools/extract_native_data.py` (GPL-3.0-only).
