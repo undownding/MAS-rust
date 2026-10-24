@@ -5,12 +5,18 @@ use crate::native::registry::{Key, RawValue};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashSet,
-    fs::OpenOptions,
-    io::{self, Write},
+    collections::{HashMap, HashSet},
+    fs::{File, OpenOptions},
+    io::{self, Read, Write},
     path::Path,
 };
 
+/// Trusted mapping supplied by runtime code, never derived from backup paths.
+pub struct Target<'a> {
+    pub id: &'a str,
+    pub key: &'a Key,
+    pub name: &'a str,
+}
 pub struct Edit<'a> {
     pub id: &'a str,
     pub key: &'a Key,
@@ -61,6 +67,53 @@ impl<'a> RegistryValues<'a> {
             prepared: false,
         })
     }
+    pub fn from_backup(backup: &Path, targets: Vec<Target<'a>>) -> io::Result<Self> {
+        let manifest = read_backup(backup, "registry.json", 24 * 1024 * 1024)?;
+        let checksum = read_backup(backup, "registry.sha256", 32)?;
+        if checksum.as_slice() != Sha256::digest(&manifest).as_slice() {
+            return Err(invalid("registry backup checksum mismatch"));
+        }
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest)?;
+        if manifest.get("version").and_then(|v| v.as_u64()) != Some(1) {
+            return Err(invalid("unsupported registry backup version"));
+        }
+        let values = manifest
+            .get("values")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| invalid("invalid registry backup entries"))?;
+        if values.len() != targets.len() || values.is_empty() || values.len() > 32 {
+            return Err(invalid("registry backup target count mismatch"));
+        }
+        let mut records = HashMap::new();
+        let mut total = 0usize;
+        for value in values {
+            let id = value
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| invalid("invalid registry backup ID"))?;
+            let original = decode(value.get("original"), &mut total)?;
+            // Validate the whole backup, even though only originals are restored.
+            decode(value.get("replacement"), &mut total)?;
+            if records.insert(id, original).is_some() {
+                return Err(invalid("duplicate registry backup ID"));
+            }
+        }
+        let mut edits = Vec::new();
+        for target in targets {
+            let replacement = records.remove(target.id).ok_or_else(|| {
+                invalid("registry backup differs from explicitly selected targets")
+            })?;
+            edits.push(Edit {
+                id: target.id,
+                key: target.key,
+                name: target.name,
+                replacement,
+            });
+        }
+        // Capture live state for undo, rather than treating the old replacement
+        // as current state: a partial installation may have changed only some values.
+        Self::capture(edits)
+    }
     fn unchanged(&self) -> io::Result<()> {
         for saved in &self.values {
             if saved
@@ -78,6 +131,41 @@ impl<'a> RegistryValues<'a> {
         }
         Ok(())
     }
+}
+fn read_backup(backup: &Path, name: &str, limit: u64) -> io::Result<Vec<u8>> {
+    let path = backup.join(name);
+    crate::native::hook_files::plain_ancestors(&path).map_err(io::Error::other)?;
+    let mut bytes = Vec::new();
+    File::open(path)?.take(limit + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > limit {
+        return Err(invalid("registry backup file exceeds size limit"));
+    }
+    Ok(bytes)
+}
+fn decode(value: Option<&serde_json::Value>, total: &mut usize) -> io::Result<Option<RawValue>> {
+    let value = value.ok_or_else(|| invalid("missing registry value representation"))?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    let kind = value
+        .get("type")
+        .and_then(|v| v.as_u64())
+        .and_then(|v| u32::try_from(v).ok())
+        .ok_or_else(|| invalid("invalid registry type"))?;
+    let text = value
+        .get("base64")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| invalid("invalid registry bytes"))?;
+    let bytes = STANDARD
+        .decode(text)
+        .map_err(|_| invalid("invalid registry base64"))?;
+    *total += bytes.len();
+    if *total > 16 * 1024 * 1024 {
+        return Err(invalid("registry backup exceeds 16 MiB"));
+    }
+    let value = RawValue { kind, bytes };
+    value.validate_write().map_err(io::Error::other)?;
+    Ok(Some(value))
 }
 #[allow(dead_code)] // Used by the staged participant implementation.
 fn encode(value: &Option<RawValue>) -> serde_json::Value {
@@ -163,6 +251,141 @@ mod tests {
                 kind: REG_BINARY,
                 bytes: vec![1, 2, 3],
             }),
+        }
+    }
+    #[test]
+    fn compound_recovery_restores_both_resources_and_undo_captures_live_state() {
+        use super::super::transaction::restore_participating;
+        let fixture = TestKey::new();
+        let key = fixture.key();
+        key.set_dword("existing", 7).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = [dir.path().join("data"), dir.path().join("tokens")];
+        for path in &paths {
+            fs::write(path, b"original").unwrap();
+        }
+        let mut install = RegistryValues::capture(vec![
+            change("product", key, "existing"),
+            change("pid", key, "absent"),
+        ])
+        .unwrap();
+        let backup = Transaction::prepare(
+            paths
+                .iter()
+                .map(|p| (p.clone(), b"installed".to_vec()))
+                .collect(),
+        )
+        .unwrap()
+        .commit_participating(&mut install)
+        .unwrap();
+        // Simulate a later change; recovery must back this up for its own undo.
+        key.set_dword("existing", 99).unwrap();
+        let targets = || {
+            vec![
+                Target {
+                    id: "product",
+                    key,
+                    name: "existing",
+                },
+                Target {
+                    id: "pid",
+                    key,
+                    name: "absent",
+                },
+            ]
+        };
+        let mut restore = RegistryValues::from_backup(&backup, targets()).unwrap();
+        let undo = restore_participating(
+            &backup,
+            &paths,
+            |_, data| {
+                if data != b"original" {
+                    return Err(invalid("bad original"));
+                }
+                Ok(())
+            },
+            &mut restore,
+        )
+        .unwrap();
+        for path in &paths {
+            assert_eq!(fs::read(path).unwrap(), b"original");
+        }
+        assert_eq!(
+            key.raw_value("existing").unwrap().unwrap().bytes,
+            7u32.to_le_bytes()
+        );
+        assert!(key.raw_value("absent").unwrap().is_none());
+        let mut redo = RegistryValues::from_backup(&undo, targets()).unwrap();
+        restore_participating(&undo, &paths, |_, _| Ok(()), &mut redo).unwrap();
+        for path in &paths {
+            assert_eq!(fs::read(path).unwrap(), b"installed");
+        }
+        assert_eq!(
+            key.raw_value("existing").unwrap().unwrap().bytes,
+            99u32.to_le_bytes()
+        );
+        assert_eq!(key.raw_value("absent").unwrap().unwrap().bytes, [1, 2, 3]);
+    }
+    #[test]
+    fn corrupt_or_mismatched_registry_backup_never_changes_live_values() {
+        let fixture = TestKey::new();
+        let key = fixture.key();
+        let dir = tempfile::tempdir().unwrap();
+        let mut participant =
+            RegistryValues::capture(vec![change("product", key, "value")]).unwrap();
+        participant.prepare(dir.path()).unwrap();
+        participant.commit().unwrap();
+        let original = fs::read(dir.path().join("registry.json")).unwrap();
+        let targets = || {
+            vec![Target {
+                id: "product",
+                key,
+                name: "value",
+            }]
+        };
+        fs::write(dir.path().join("registry.json"), b"{}").unwrap();
+        assert!(RegistryValues::from_backup(dir.path(), targets()).is_err());
+        let base: serde_json::Value = serde_json::from_slice(&original).unwrap();
+        for mode in 0..7 {
+            let mut manifest = base.clone();
+            match mode {
+                0 => {
+                    manifest["version"] = 2.into();
+                }
+                1 => {
+                    manifest["values"][0]["id"] = "unexpected".into();
+                }
+                2 => {
+                    manifest["values"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("original");
+                }
+                3 => {
+                    manifest["values"][0]["original"] =
+                        serde_json::json!({"type": 1, "base64": "QQA="});
+                }
+                4 => {
+                    manifest["values"][0]["replacement"]["base64"] = "!!!".into();
+                }
+                5 => {
+                    manifest["values"][0]["replacement"]["type"] = u64::MAX.into();
+                }
+                _ => {
+                    manifest["values"]
+                        .as_array_mut()
+                        .unwrap()
+                        .push(base["values"][0].clone());
+                }
+            }
+            let bytes = serde_json::to_vec(&manifest).unwrap();
+            fs::write(dir.path().join("registry.json"), &bytes).unwrap();
+            fs::write(dir.path().join("registry.sha256"), Sha256::digest(&bytes)).unwrap();
+            assert!(
+                RegistryValues::from_backup(dir.path(), targets()).is_err(),
+                "mode {mode}"
+            );
+            assert_eq!(key.raw_value("value").unwrap().unwrap().bytes, [1, 2, 3]);
         }
     }
     #[test]

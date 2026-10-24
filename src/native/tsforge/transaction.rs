@@ -341,14 +341,44 @@ pub fn restore(backup: &Path, expected: &[PathBuf]) -> Result<PathBuf, Failure> 
 pub fn restore_validated(
     backup: &Path,
     expected: &[PathBuf],
-    mut validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
+    validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
 ) -> Result<PathBuf, Failure> {
+    prepare_restore(backup, expected, validate, false)?.commit()
+}
+
+/// Caller must load and validate the external backup into the participant first.
+/// The returned backup contains the pre-recovery state of both resource types.
+#[allow(dead_code)] // Installation/recovery runtime integration is in progress.
+pub fn restore_participating(
+    backup: &Path,
+    expected: &[PathBuf],
+    validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
+    participant: &mut dyn Participant,
+) -> Result<PathBuf, Failure> {
+    prepare_restore(backup, expected, validate, true)?.commit_participating(participant)
+}
+
+fn prepare_restore(
+    backup: &Path,
+    expected: &[PathBuf],
+    mut validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
+    external: bool,
+) -> Result<Transaction, Failure> {
     let mut prepare = || -> io::Result<Transaction> {
         plain_ancestors(backup).map_err(io::Error::other)?;
-        if backup.join("external-state-required").try_exists()? {
+        let marker = backup.join("external-state-required");
+        if marker.try_exists()? != external {
             return Err(invalid(
-                "backup also contains external state; coordinated recovery required",
+                "backup external state mismatch; coordinated recovery required",
             ));
+        }
+        if external {
+            plain_ancestors(&marker).map_err(io::Error::other)?;
+            let mut version = Vec::new();
+            File::open(marker)?.take(3).read_to_end(&mut version)?;
+            if version != b"1\n" {
+                return Err(invalid("unsupported external backup marker"));
+            }
         }
         let manifest_path = backup.join("manifest.json");
         plain_ancestors(&manifest_path).map_err(io::Error::other)?;
@@ -397,13 +427,11 @@ pub fn restore_validated(
         }
         Transaction::prepare(plan)
     };
-    prepare()
-        .map_err(|error| Failure {
-            cause: error.to_string(),
-            backup: backup.to_path_buf(),
-            rollback_errors: Vec::new(),
-        })?
-        .commit()
+    prepare().map_err(|error| Failure {
+        cause: error.to_string(),
+        backup: backup.to_path_buf(),
+        rollback_errors: Vec::new(),
+    })
 }
 
 #[cfg(test)]
@@ -490,6 +518,56 @@ mod tests {
         assert!(error.cause.contains("coordinated recovery required"));
         assert_eq!(fs::read(&paths[0]).unwrap(), b"");
         assert_eq!(extra.value, 42);
+    }
+    #[test]
+    fn compound_recovery_validates_files_before_preparing_external_state() {
+        let (_dir, paths) = stores();
+        let mut installed = ExtraState::default();
+        let backup = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut installed)
+            .unwrap();
+        let mut recovery = ExtraState::default();
+        let error = restore_participating(
+            &backup,
+            &paths,
+            |index, _| {
+                if index == 1 {
+                    Err(invalid("second backup is invalid"))
+                } else {
+                    Ok(())
+                }
+            },
+            &mut recovery,
+        )
+        .unwrap_err();
+        assert!(error.cause.contains("second backup is invalid"));
+        assert!(recovery.calls.is_empty());
+        assert_eq!(fs::read(&paths[0]).unwrap(), b"");
+        assert_eq!(fs::read(&paths[1]).unwrap(), vec![1; 19]);
+        fs::write(backup.join("external-state-required"), b"2\n").unwrap();
+        assert!(restore_participating(&backup, &paths, |_, _| Ok(()), &mut recovery).is_err());
+        assert!(recovery.calls.is_empty());
+    }
+    #[test]
+    fn failed_compound_recovery_rolls_files_back_to_pre_recovery_state() {
+        let (_dir, paths) = stores();
+        let mut installed = ExtraState::default();
+        let backup = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit_participating(&mut installed)
+            .unwrap();
+        let mut recovery = ExtraState {
+            fail_commit: true,
+            ..Default::default()
+        };
+        let error =
+            restore_participating(&backup, &paths, |_, _| Ok(()), &mut recovery).unwrap_err();
+        assert!(error.rollback_errors.is_empty());
+        assert_eq!(recovery.calls, ["prepare", "commit", "rollback"]);
+        assert_eq!(fs::read(&paths[0]).unwrap(), b"");
+        assert_eq!(fs::read(&paths[1]).unwrap(), vec![1; 19]);
+        assert_eq!(fs::read(error.backup.join("0.original")).unwrap(), b"");
     }
     #[test]
     fn participant_preparation_failure_changes_no_live_state() {
