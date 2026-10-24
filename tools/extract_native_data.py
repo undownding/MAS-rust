@@ -89,3 +89,8 @@ for label, name, count in [('ts_ohost', 'tsforge-office-host', 6), ('ts_appxlob'
     rows = ['\t'.join(line.split('_', 1)) for line in section.splitlines() if re.match(r'^[0-9a-f]{8}-', line)]
     assert len(rows) == count
     (DEST / (name + '.tsv')).write_text('\n'.join(rows) + '\n')
+
+section = current.split('\n:tsksdata\n', 1)[1].split(') do (', 1)[0]
+rows = ['\t'.join(line.split('_', 2)) for line in section.splitlines() if re.match(r'^(15|16)_', line)]
+assert len(rows) > 80
+(DEST / 'tsforge-office-conversion.tsv').write_text('\n'.join(rows) + '\n')

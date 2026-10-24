@@ -403,3 +403,14 @@ Windows KMS Host 按钮接到现代原生后端，旧存储明确转兼容，原
 新增 `auxiliary.rs`/`auxiliary_runtime.rs`，串联目录筛选、Auto 联网判断、逐产品安装/激活/结果验证与公共 SPP 重评估。部分失败继续处理后续产品并保留身份、数量与错误；没有许可证时不下载安装包。两个 GUI 按钮切换为明确的 Rust/兼容范围，Office Host 确认窗口说明它不是 Office 客户端激活及服务持续运行影响。
 
 129 项本地测试及双平台 Clippy 通过；新增系统构建边界、目录交集/顺序、部分失败继续测试，Windows 专用测试只查询实际安装的许可证，不运行激活。README、截图和本地 Windows 包同步更新至 dev.7。Windows KMS Host 后端 CI 40121163362 与 GUI CI 40121347942 仍在运行；新入口没有真实激活验收。Office 客户端、Project/Visio、组合、旧存储及修复/高级工具仍有待迁移。
+
+
+### TSforge Office 产品转换与激活 ID 选择（进行中）
+
+新增 `office_selection.rs` 与独立提取的 `tsforge-office-conversion.tsv`，对应上游 ts_process/tsksdata/offtsid，不复用 Online KMS 的不同产品映射。保留 Office 15/16 的 O365 差异、非 MSI ARM→MondoRetail、KMS4k Retail→Volume/未知产品→MondoVolume、免费 Retail 保留、MSI Retail 跳过、Project/Visio 专用范围及 O365/Mondo 覆盖时的重复产品跳过规则。
+
+Office 激活 ID 按 OEM:NONSLP→Volume:MAK→Retail 或单独 Volume:GVLK 的顺序选择，忽略大小写，排除 demo/MSDN/PIN；有非 preview/C2R 配置时优先正式配置，否则保留预览回退。PKeyConfig 选择元数据增加可选 ProductKeyType，不影响不依赖该字段的 Windows 选择；仍保留没有密钥范围的配置，实际可安装性由后续生成密钥阶段检查。
+
+135 项本地测试及双平台 Clippy 通过，新增完整转换别名覆盖、O365/ARM/MSI/免费 Retail、Project/Visio、通道优先级与 XML 元数据到选择结果的测试。Windows KMS Host 后端 CI 40121163362 已成功，GUI CI 40121347942 与辅助入口 CI 40121694619 仍在运行。
+
+Office GUI 尚未切换；C2R/MSI/UWP 产品发现、许可导入和配置清理仍需连接。已确认 KMS4k 模式下的免费 Retail 产品需要在安装后先检查已许可状态，不能直接套用通用入口的 GVLK 安装前限制，后续会在 Office 编排中处理。本轮无界面或已启用入口变化，不更新截图和测试包。

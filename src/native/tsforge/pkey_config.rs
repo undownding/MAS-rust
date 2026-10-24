@@ -260,6 +260,7 @@ pub struct SelectionProduct {
     pub activation_id: Uuid,
     pub edition: String,
     pub description: String,
+    pub channel: Option<String>,
     pub pkey2009: bool,
     pub has_wau_range: bool,
 }
@@ -303,6 +304,11 @@ pub fn parse_selection_config(xml: &str) -> Result<Vec<SelectionProduct>> {
                 activation_id,
                 edition: field(node, "EditionId")?,
                 description: field(node, "ProductDescription")?,
+                channel: if children(node, CONFIG_NS, "ProductKeyType").next().is_some() {
+                    Some(field(node, "ProductKeyType")?)
+                } else {
+                    None
+                },
                 pkey2009: pkey2009.contains(&number(node, "RefGroupId")?),
                 has_wau_range: wau.contains(&activation_id),
             });

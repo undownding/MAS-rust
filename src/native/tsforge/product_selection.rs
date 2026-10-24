@@ -180,6 +180,7 @@ mod tests {
             activation_id: Uuid::from_u128(id),
             edition: "Professional".into(),
             description: description.into(),
+            channel: None,
             pkey2009: true,
             has_wau_range: false,
         }

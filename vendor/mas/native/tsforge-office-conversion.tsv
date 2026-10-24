@@ -1,0 +1,89 @@
+15	AccessVolume	-AccessRetail-
+15	AccessRuntimeRetail
+15	ExcelVolume	-ExcelRetail-
+15	GrooveVolume	-GrooveRetail-
+15	InfoPathVolume	-InfoPathRetail-
+15	LyncAcademicRetail
+15	LyncEntryRetail
+15	LyncVolume	-LyncRetail-
+15	MondoRetail
+15	MondoVolume	-O365BusinessRetail-O365HomePremRetail-O365ProPlusRetail-O365SmallBusPremRetail-
+15	OneNoteFreeRetail
+15	OneNoteVolume	-OneNoteRetail-
+15	OutlookVolume	-OutlookRetail-
+15	PowerPointVolume	-PowerPointRetail-
+15	ProjectProVolume	-ProjectProRetail-
+15	ProjectStdVolume	-ProjectStdRetail-
+15	ProPlusVolume	-ProPlusRetail-ProfessionalPipcRetail-ProfessionalRetail-
+15	PublisherVolume	-PublisherRetail-
+15	SPDRetail
+15	StandardVolume	-StandardRetail-HomeBusinessPipcRetail-HomeBusinessRetail-HomeStudentARMRetail-HomeStudentPlusARMRetail-HomeStudentRetail-PersonalPipcRetail-PersonalRetail-
+15	VisioProVolume	-VisioProRetail-
+15	VisioStdVolume	-VisioStdRetail-
+15	WordVolume	-WordRetail-
+16	AccessRuntimeRetail
+16	AccessVolume	-AccessRetail-
+16	ExcelVolume	-ExcelRetail-
+16	MondoRetail
+16	MondoVolume	-O365AppsBasicRetail-O365BusinessRetail-O365EduCloudRetail-O365HomePremRetail-O365ProPlusRetail-O365SmallBusPremRetail-
+16	OneNoteFreeRetail
+16	OneNoteVolume	-OneNoteRetail-OneNote2021Retail-
+16	OutlookVolume	-OutlookRetail-
+16	PowerPointVolume	-PowerPointRetail-
+16	ProjectProVolume	-ProjectProRetail-
+16	ProjectProXVolume
+16	ProjectStdVolume	-ProjectStdRetail-
+16	ProjectStdXVolume
+16	ProPlusVolume	-ProPlusRetail-ProfessionalPipcRetail-ProfessionalRetail-
+16	PublisherVolume	-PublisherRetail-
+16	SkypeServiceBypassRetail
+16	SkypeforBusinessEntryRetail
+16	SkypeforBusinessVolume	-SkypeforBusinessRetail-
+16	StandardVolume	-StandardRetail-HomeBusinessPipcRetail-HomeBusinessRetail-HomeStudentARMRetail-HomeStudentPlusARMRetail-HomeStudentRetail-HomeStudentVNextRetail-PersonalPipcRetail-PersonalRetail-
+16	VisioProVolume	-VisioProRetail-
+16	VisioProXVolume
+16	VisioStdVolume	-VisioStdRetail-
+16	VisioStdXVolume
+16	WordVolume	-WordRetail-
+16	AccessRuntime2019Retail
+16	Access2019Volume	-Access2019Retail-
+16	Excel2019Volume	-Excel2019Retail-
+16	Outlook2019Volume	-Outlook2019Retail-
+16	PowerPoint2019Volume	-PowerPoint2019Retail-
+16	ProjectPro2019Volume	-ProjectPro2019Retail-
+16	ProjectStd2019Volume	-ProjectStd2019Retail-
+16	ProPlus2019Volume	-ProPlus2019Retail-Professional2019Retail-
+16	Publisher2019Volume	-Publisher2019Retail-
+16	SkypeforBusiness2019Volume	-SkypeforBusiness2019Retail-
+16	SkypeforBusinessEntry2019Retail
+16	Standard2019Volume	-Standard2019Retail-HomeBusiness2019Retail-HomeStudentARM2019Retail-HomeStudentPlusARM2019Retail-HomeStudent2019Retail-Personal2019Retail-
+16	VisioPro2019Volume	-VisioPro2019Retail-
+16	VisioStd2019Volume	-VisioStd2019Retail-
+16	Word2019Volume	-Word2019Retail-
+16	AccessRuntime2021Retail
+16	Access2021Volume	-Access2021Retail-
+16	Excel2021Volume	-Excel2021Retail-
+16	Outlook2021Volume	-Outlook2021Retail-
+16	OneNoteFree2021Retail
+16	PowerPoint2021Volume	-PowerPoint2021Retail-
+16	ProjectPro2021Volume	-ProjectPro2021Retail-
+16	ProjectStd2021Volume	-ProjectStd2021Retail-
+16	ProPlus2021Volume	-ProPlus2021Retail-Professional2021Retail-
+16	Publisher2021Volume	-Publisher2021Retail-
+16	SkypeforBusiness2021Volume	-SkypeforBusiness2021Retail-
+16	Standard2021Volume	-Standard2021Retail-HomeBusiness2021Retail-HomeStudent2021Retail-Personal2021Retail-
+16	VisioPro2021Volume	-VisioPro2021Retail-
+16	VisioStd2021Volume	-VisioStd2021Retail-
+16	Word2021Volume	-Word2021Retail-
+16	Access2024Volume	-Access2024Retail-
+16	Excel2024Volume	-Excel2024Retail-
+16	Outlook2024Volume	-Outlook2024Retail-
+16	PowerPoint2024Volume	-PowerPoint2024Retail-
+16	ProjectPro2024Volume	-ProjectPro2024Retail-
+16	ProjectStd2024Volume	-ProjectStd2024Retail-
+16	ProPlus2024Volume	-ProPlus2024Retail-
+16	SkypeforBusiness2024Volume
+16	Standard2024Volume	-Home2024Retail-HomeBusiness2024Retail-
+16	VisioPro2024Volume	-VisioPro2024Retail-
+16	VisioStd2024Volume	-VisioStd2024Retail-
+16	Word2024Volume	-Word2024Retail-
