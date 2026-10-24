@@ -133,3 +133,11 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 同日继续迁移 `TokenStoreModern` 和 `TokenMeta`：实现目录块链接、固定 UTF-16 字段、内容记录和元数据编解码，并核对文件/块/内容 SHA-256。合成双块样本包含中文、代理对、具名未填充项、零字节内容及重复元数据键。测试覆盖循环链、错误偏移、篡改、截断、字段超长，以及 103 项块边界的重复序列化稳定性。
 
 当前 TokenStore 解析器只接受完整、无间隙、分配长度等于内容长度的规范布局；对于未识别的空闲空间、孤立内容、字段尾部、非规范未填充项或未知版本明确拒绝。此限制是避免静默丢弃未知数据，**不能据此宣称已支持真实系统的所有 tokens.dat**。序列化不重复添加多余空块，保留已有完整槽位数量；对应上游每次在整块边界附加一个空块的行为差异已通过稳定性测试。尚未对系统 tokens.dat 执行读取或写入。
+
+### TSforge SL API 封装（进行中）
+
+2026-10-25：新增 `tsforge/sl.rs`，使用 `windows-sys` 的 SDK 绑定实现 SLC 上下文、状态/ID 枚举、SKU/产品密钥属性、许可证读取、IID/CID、密钥安装/卸载/选择及状态事件。上层包含默认激活 ID、附加组件/电话属性判断、产品密钥配置文件 ID 解析和按应用卸载密钥；实际写操作尚未接入 GUI。
+
+使用 RAII 关闭 SLC 上下文，并释放 API 返回的 LocalAlloc 内存；先核对分配长度再读取返回数组，字符串按分配边界查找结束符。保留调用名称与原始 HRESULT，只把 `SL_E_VALUE_NOT_FOUND` 识别为属性不存在；其他查询错误不再被误认为“支持电话激活”或无附加组件。使用 SDK 的 `SL_DATA_DWORD = 4`，不沿用上游手写枚举的连续编号。密钥批量卸载先完成枚举和筛选，执行阶段出错停止并保留错误；它不是整体事务，调用方仍须持有全局许可操作锁。
+
+依据 Microsoft 文档核对 [SKU 属性与 LocalFree](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetproductskuinformation)、[IID 返回内存](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgenerateofflineinstallationid) 和 [状态结构查询](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetlicensingstatusinformation)。新增 Windows 测试覆盖 SDK 数据类型、错误保留、内存边界/字符串终止和真实只读 SLC 状态查询，不执行密钥安装、CID 导入或状态刷新。当前模块仍仅参与测试构建；服务/存储协调、完整激活调用链和实机验收仍待迁移。非公开 `SLConsumeWindowsRight` 按固定上游 ABI 动态解析，缺少导出时显式报错；它不是稳定 SDK API，测试不会调用。`SLActivateProduct` 使用 SDK 的正确参数类型封装，尚未执行联机调用。

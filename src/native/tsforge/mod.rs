@@ -3,5 +3,7 @@
 mod binary;
 mod crypto;
 mod physical;
+#[cfg(windows)]
+mod sl;
 mod token;
 mod variable_bag;
