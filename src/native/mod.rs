@@ -56,3 +56,6 @@ mod cabinet;
 
 #[cfg(any(windows, test))]
 pub mod wmi_repair;
+
+#[cfg(any(windows, test))]
+mod wmi_repository;
