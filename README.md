@@ -11,7 +11,7 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.6.0-dev：TSforge 重置流程接入 Rust；Ohook 安装、卸载及 x86/x64 DLL 均使用 Rust。**
+**v0.6.0-dev.2：TSforge 重置与备份恢复入口接入 Rust；Ohook 安装、卸载及 x86/x64 DLL 均使用 Rust。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
 TSforge 的重置入口已接入 Rust 存储解析、加密、备份回滚和服务控制，当前支持 build 9600 及更新版本，尚待 Windows 实机验证。TSforge 激活方法、Office 的部分修复分支及高级工具仍使用固定版本的上游兼容引擎，界面明确标注“Rust / 兼容”。**这还不是完整的纯 Rust MAS**，各模块的实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
@@ -24,6 +24,12 @@ TSforge 的重置入口已接入 Rust 存储解析、加密、备份回滚和服
 
 ![MAS Rust 许可证管理页](screenshots/mas-rust-license.png)
 
+### 恢复 TSforge 备份
+
+在“激活 → TSforge → 恢复本机 TSforge 备份”中粘贴日志里的备份目录（包含 `manifest.json`），点击“恢复备份 · Rust”并核对确认信息。只使用本机生成的备份。
+
+重置按阶段生成备份；若要恢复到本轮重置前的物理存储，应选择本轮**第一个阶段**的备份，而不是最后一个。恢复会校验目标路径、SHA-256、加密完整性及存储格式，先保存当前文件，再写入所选备份。它只恢复 `data.dat`，不回退注册表、tokens.dat 或其他许可组件；可能覆盖备份后发生的许可变化。原生重置和恢复仍待 Windows 实机验收。
+
 ## 功能
 
 | 功能 | 入口 |
@@ -31,7 +37,7 @@ TSforge 的重置入口已接入 Rust 存储解析、加密、备份回滚和服
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
 | Ohook / 卸载 | Rust 许可准备、DLL 构建/部署、用户配置和卸载恢复 |
 | TSforge Windows / Office / ESU / Project / Visio / KMS Host / APPX | 兼容引擎，支持默认、SCID、ZCID、KMS4k 方法 |
-| TSforge 重置 | Rust：标记、rearm 计数、宽限/评估计时器、密钥变更锁；分阶段备份 |
+| TSforge 重置 / 备份恢复 | Rust：标记、rearm 计数、宽限/评估计时器、密钥变更锁；分阶段备份与校验恢复 |
 | Online KMS Windows / Office / Project / Visio / 卸载 | Rust 主流程；Office 支持 C2R 转换及 MSI 批量许可；支持自定义主机、端口与原生续期 |
 | KMS38 | 原生 Rust 主流程；历史菜单仍为兼容引擎 |
 | 激活状态、Windows / Office 版本切换、排障、OEM 提取、其他高级选项 | 工具箱 → 完整 MAS 菜单 |

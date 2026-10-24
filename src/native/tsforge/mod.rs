@@ -16,4 +16,4 @@ mod variable_bag;
 #[cfg(windows)]
 mod runtime;
 #[cfg(windows)]
-pub use runtime::reset;
+pub use runtime::{reset, restore};

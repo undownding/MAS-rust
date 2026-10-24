@@ -123,7 +123,6 @@ pub struct Failure {
 
 impl Transaction {
     /// Explicit replacement (used by recovery). For read/modify/write, use edit.
-    #[cfg(test)]
     pub fn prepare(plan: Vec<(PathBuf, Vec<u8>)>) -> io::Result<Self> {
         let (paths, replacements): (Vec<_>, Vec<_>) = plan.into_iter().unzip();
         Self::edit(paths, |_| Ok(replacements))
@@ -290,7 +289,15 @@ impl Transaction {
 /// restore through a new transaction (so a failed recovery can also roll back).
 #[cfg(test)]
 pub fn restore(backup: &Path, expected: &[PathBuf]) -> Result<PathBuf, Failure> {
-    let prepare = || -> io::Result<Transaction> {
+    restore_validated(backup, expected, |_, _| Ok(()))
+}
+
+pub fn restore_validated(
+    backup: &Path,
+    expected: &[PathBuf],
+    mut validate: impl FnMut(usize, &[u8]) -> io::Result<()>,
+) -> Result<PathBuf, Failure> {
+    let mut prepare = || -> io::Result<Transaction> {
         plain_ancestors(backup).map_err(io::Error::other)?;
         let manifest_path = backup.join("manifest.json");
         plain_ancestors(&manifest_path).map_err(io::Error::other)?;
@@ -334,6 +341,7 @@ pub fn restore(backup: &Path, expected: &[PathBuf]) -> Result<PathBuf, Failure> 
             if total > MAX_BYTES {
                 return Err(invalid("backup set exceeds supported size"));
             }
+            validate(index, &original)?;
             plan.push((expected, original));
         }
         Transaction::prepare(plan)
@@ -482,6 +490,28 @@ mod tests {
         .unwrap();
         assert_eq!(fs::read(&paths[0]).unwrap(), b"original-0-edited");
         assert_eq!(fs::read(&paths[1]).unwrap(), b"original-1-edited");
+    }
+    #[test]
+    fn codec_rejection_of_any_backup_prevents_all_restore_writes() {
+        let (_dir, paths) = stores();
+        let backup = Transaction::prepare(plan(&paths))
+            .unwrap()
+            .commit()
+            .unwrap();
+        let mut checked = Vec::new();
+        let result = restore_validated(&backup, &paths, |index, bytes| {
+            checked.push(index);
+            assert_eq!(bytes, format!("original-{index}").as_bytes());
+            if index == 1 {
+                Err(invalid("invalid encrypted store"))
+            } else {
+                Ok(())
+            }
+        });
+        assert!(result.is_err());
+        assert_eq!(checked, [0, 1]);
+        assert_eq!(fs::read(&paths[0]).unwrap(), b"");
+        assert_eq!(fs::read(&paths[1]).unwrap(), vec![1; 19]);
     }
     #[test]
     fn dropping_prepared_transaction_is_read_only() {

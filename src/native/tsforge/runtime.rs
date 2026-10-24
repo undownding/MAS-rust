@@ -1,7 +1,7 @@
 use super::{
     reset::{self, Step},
     service, sl,
-    transaction::Transaction,
+    transaction::{self, Transaction},
 };
 use crate::native::{platform, registry::Key};
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
@@ -57,12 +57,12 @@ fn physical_path() -> Result<PathBuf, String> {
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
-pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
+fn preflight() -> Result<PathBuf, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
     }
     if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|value| !value.is_empty()) {
-        return Err("原生 TSforge 重置须在 Windows x64 本机运行，不支持跨架构仿真。".into());
+        return Err("原生 TSforge 存储操作须在 Windows x64 本机运行，不支持跨架构仿真。".into());
     }
     let version_key = Key::open(
         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
@@ -76,10 +76,14 @@ pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
         .parse()
         .map_err(|_| "Windows 构建号无效")?;
     if build < 9600 {
-        return Err("原生 TSforge 重置尚未接入 Vista/Windows 7/8 的存储与服务布局。".into());
+        return Err("原生 TSforge 存储操作尚未接入 Vista/Windows 7/8 的存储与服务布局。".into());
     }
     sl::ensure_refresh_available().map_err(|error| error.to_string())?;
-    let path = physical_path()?;
+    physical_path()
+}
+
+pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
+    let path = preflight()?;
     report(&format!(
         "原生 Rust TSforge 重置：{}；每阶段先保存备份，不调用 PowerShell。",
         path.display()
@@ -133,4 +137,42 @@ pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
             "TSforge 重置失败（已完成 {completed}/3 个存储阶段）：{error}。此前完成的阶段仍有效，备份路径见日志。"
         )),
     }
+}
+
+/// The engine holds OperationGuard; the manifest cannot select arbitrary targets.
+pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String, String> {
+    if !backup.is_absolute() || !backup.is_dir() {
+        return Err("请选择本机备份目录的绝对路径，目录中须有 manifest.json。".into());
+    }
+    let path = preflight()?;
+    report(&format!(
+        "原生 Rust TSforge 恢复：{} → {}",
+        backup.display(),
+        path.display()
+    ));
+    let mut restored = false;
+    let result = service::stopped("sppsvc", || {
+        let undo = transaction::restore_validated(backup, &[path], |_, bytes| {
+            reset::decode_modern(bytes).map(|_| ())
+        })
+        .map_err(|error| error.to_string())?;
+        restored = true;
+        report(&format!(
+            "已恢复存储并完成回读校验。恢复前状态备份：{}",
+            undo.display()
+        ));
+        Ok(())
+    });
+    if let Err(error) = result {
+        return Err(format!(
+            "恢复流程失败（存储{}恢复）：{error}",
+            if restored { "已" } else { "尚未完整" }
+        ));
+    }
+    sl::refresh_license_status()
+        .map_err(|error| format!("存储已恢复，但许可状态刷新失败：{error}"))?;
+    Ok(
+        "已恢复所选阶段备份。恢复前的状态已另行备份，路径见日志；请检查 Windows/Office 状态。"
+            .into(),
+    )
 }

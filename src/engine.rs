@@ -211,6 +211,19 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
     run_compatibility(op, options, report)
 }
 
+pub fn restore_tsforge(backup: &str, report: &dyn Fn(&str)) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let _guard = crate::native::session::OperationGuard::acquire()?;
+        crate::native::tsforge::restore(std::path::Path::new(backup), report)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (backup, report);
+        Err("TSforge 恢复需要在 Windows 上运行".into())
+    }
+}
+
 pub fn is_native(op: Operation) -> bool {
     matches!(op.args, ["/Ohook"] | ["/Ohook-Uninstall"] | ["/Z-Reset"])
         || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))

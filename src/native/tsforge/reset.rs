@@ -80,7 +80,7 @@ pub fn apply(store: &mut Store, step: Step) -> usize {
 
 /// Authenticated read/modify/write for the modern store used since build 9600.
 /// Unknown formats fail before the transaction can write any replacement.
-pub fn transform(original: &[u8], step: Step) -> std::io::Result<(Vec<u8>, usize)> {
+pub fn decode_modern(original: &[u8]) -> std::io::Result<(Store, bool)> {
     use super::crypto::{self, Version};
     let (plaintext, production) = match crypto::decrypt(original, true, Version::Modern) {
         Ok(data) => (data, true),
@@ -93,7 +93,12 @@ pub fn transform(original: &[u8], step: Step) -> std::io::Result<(Vec<u8>, usize
             }
         },
     };
-    let mut store = Store::decode(&plaintext, Format::Modern)?;
+    Ok((Store::decode(&plaintext, Format::Modern)?, production))
+}
+
+pub fn transform(original: &[u8], step: Step) -> std::io::Result<(Vec<u8>, usize)> {
+    use super::crypto::{self, Version};
+    let (mut store, production) = decode_modern(original)?;
     let changed = apply(&mut store, step);
     if changed == 0 {
         return Ok((original.to_vec(), 0));

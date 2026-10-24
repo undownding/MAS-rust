@@ -25,6 +25,7 @@ enum Event {
 enum Job {
     Engine(Operation, Options),
     License(Product, Action),
+    RestoreBackup(String),
 }
 
 pub struct MasApp {
@@ -35,6 +36,7 @@ pub struct MasApp {
     host: String,
     port: String,
     options: Options,
+    backup_directory: String,
     pending: Option<Job>,
     receiver: Option<mpsc::Receiver<Event>>,
     log: String,
@@ -51,6 +53,7 @@ impl Default for MasApp {
             host: String::new(),
             port: "1688".into(),
             options: Options::default(),
+            backup_directory: String::new(),
             pending: None,
             receiver: None,
             log: "准备就绪。选择功能后查看并确认操作。\n".into(),
@@ -73,6 +76,7 @@ impl MasApp {
             };
             let result = match job {
                 Job::Engine(op, options) => engine::run(op, options, &report),
+                Job::RestoreBackup(path) => engine::restore_tsforge(&path, &report),
                 Job::License(product, action) => {
                     process::execute(product, action, Arc::new(AtomicBool::new(false)))
                         .map(|r| r.output)
@@ -124,6 +128,16 @@ impl MasApp {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
                 if category == "工具箱" { ui.label("打开完整上游菜单：查询状态、更改 Windows / Office 版本、故障排查、提取 $OEM$、帮助及其他高级设置。"); }
+                if category == "TSforge" {
+                    ui.collapsing("恢复本机 TSforge 备份", |ui| {
+                        ui.label("粘贴日志中的阶段备份目录。恢复会替换当前许可存储，并另行备份恢复前状态。");
+                        ui.add(egui::TextEdit::singleline(&mut self.backup_directory).desired_width(f32::INFINITY).hint_text("包含 manifest.json 的备份目录"));
+                        let path = self.backup_directory.trim().trim_matches('"');
+                        if ui.add_enabled(!path.is_empty(), egui::Button::new("恢复备份 · Rust")).clicked() {
+                            self.pending = Some(Job::RestoreBackup(path.to_owned()));
+                        }
+                    });
+                }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
                         if ui.button(format!("{} · {}", op.title, if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
@@ -332,7 +346,7 @@ impl MasApp {
                                 ui.label("Office 激活会清理用户许可缓存及共享/设备许可设置；可能需要重新登录 Office。");
                             }
                             if op.args == ["/Z-Reset"] {
-                                ui.label("将重置许可存储中的 rearm 计数、宽限/评估计时器及相关标记。每个阶段保留备份；这不等于激活系统。当前原生路径支持 Windows 8.1 及更新版本。");
+                                ui.label("将重置许可存储中的 rearm 计数、宽限/评估计时器及相关标记。每个阶段保留备份；这不等于激活系统。当前原生路径仅处理现代存储布局（build 9600+）。");
                             }
                             if op.args == ["/Ohook"] {
                                 ui.label("将安装 Office 许可和 Rust DLL，并清理用户许可缓存。请先关闭 Office；可能需要重新登录。");
@@ -343,6 +357,11 @@ impl MasApp {
                                     "KMS38 是历史实现，新系统可能不支持。",
                                 );
                             }
+                        }
+                        Job::RestoreBackup(path) => {
+                            ui.label("恢复本机 TSforge 阶段备份");
+                            ui.monospace(path);
+                            ui.label("将当前许可存储恢复到所选备份时刻，覆盖该时刻之后的许可变化。仅使用本机备份；程序将验证目标路径、校验和及存储格式，并备份当前状态。此操作不代表激活成功。");
                         }
                         Job::License(product, action) => {
                             ui.label(format!("{} · {}", product.name(), action.label()));
