@@ -123,6 +123,7 @@ pub struct Failure {
 
 impl Transaction {
     /// Explicit replacement (used by recovery). For read/modify/write, use edit.
+    #[cfg(test)]
     pub fn prepare(plan: Vec<(PathBuf, Vec<u8>)>) -> io::Result<Self> {
         let (paths, replacements): (Vec<_>, Vec<_>) = plan.into_iter().unzip();
         Self::edit(paths, |_| Ok(replacements))
@@ -287,6 +288,7 @@ impl Transaction {
 /// Recovery never trusts manifest paths alone: the caller supplies exactly the
 /// expected targets. Validate every backup first, then back up current state and
 /// restore through a new transaction (so a failed recovery can also roll back).
+#[cfg(test)]
 pub fn restore(backup: &Path, expected: &[PathBuf]) -> Result<PathBuf, Failure> {
     let prepare = || -> io::Result<Transaction> {
         plain_ancestors(backup).map_err(io::Error::other)?;

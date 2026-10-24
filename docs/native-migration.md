@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 尚未迁移，显式兼容后端 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | 重置已接入 Rust；SCID/ZCID/KMS4k 等激活仍为兼容后端 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
+- TSforge 激活方法、Office 的部分修复分支和高级菜单仍依赖 Windows PowerShell；界面按钮标注为“兼容”。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -126,7 +126,7 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 - 加密封装实现 RSA PKCS#1 v1.5/SHA-1、AES-CBC/PKCS7（读取 128/192/256 位密钥）、Vista 盐化 SHA-1 和后续版本 HMAC-SHA1。生产/测试 RSA blob 来自固定上游公开常量；复用已验证的 CSP blob 解析器。新封装使用系统随机源，私钥解密使用 RSA blinding。
 - 封装解析检查版本、`UNTRUSTSTORE` 标记、RSA 签名及完整性校验；当前拒绝未知头部或非零保留字段。未知格式必须显式扩展后才可写入，不自动猜测。
 - `tools/tsforge_codec_vectors.py` 用独立多项式除法生成格式向量；`tools/tsforge_crypto_vectors.py` 用 Python cryptography/OpenSSL 生成确定性的加密样本，覆盖两套公开密钥、三种 AES 长度及两种完整性算法。样本完全合成，不包含机器许可数据。固定 RSA 填充仅用于测试向量。
-- **模块目前仅在测试构建中启用，加密依赖暂列 dev-dependencies；GUI 的 TSforge 路由仍为兼容模式。** 还需真实 TokenStore 布局兼容性验证、SL API、产品密钥配置、备份/恢复和写入事务，之后逐项接入 SCID/ZCID/KMS4k。未宣称 TSforge 激活已原生化。
+- **此阶段模块仅在测试构建中启用；v0.6.0-dev 已将重置所需模块和依赖转入运行时，见下文。** 还需真实 TokenStore 布局兼容性验证、SL API、产品密钥配置、备份/恢复和写入事务，之后逐项接入 SCID/ZCID/KMS4k。未宣称 TSforge 激活已原生化。
 
 上一轮 Ohook 修复的 Windows CI [40109703595](https://github.com/undownding/MAS-rust/actions/runs/40109703595) 已全部通过。
 
@@ -140,7 +140,7 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 
 使用 RAII 关闭 SLC 上下文，并释放 API 返回的 LocalAlloc 内存；先核对分配长度再读取返回数组，字符串按分配边界查找结束符。保留调用名称与原始 HRESULT，只把 `SL_E_VALUE_NOT_FOUND` 识别为属性不存在；其他查询错误不再被误认为“支持电话激活”或无附加组件。使用 SDK 的 `SL_DATA_DWORD = 4`，不沿用上游手写枚举的连续编号。密钥批量卸载先完成枚举和筛选，执行阶段出错停止并保留错误；它不是整体事务，调用方仍须持有全局许可操作锁。
 
-依据 Microsoft 文档核对 [SKU 属性与 LocalFree](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetproductskuinformation)、[IID 返回内存](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgenerateofflineinstallationid) 和 [状态结构查询](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetlicensingstatusinformation)。新增 Windows 测试覆盖 SDK 数据类型、错误保留、内存边界/字符串终止和真实只读 SLC 状态查询，不执行密钥安装、CID 导入或状态刷新。当前模块仍仅参与测试构建；服务/存储协调、完整激活调用链和实机验收仍待迁移。非公开 `SLConsumeWindowsRight` 按固定上游 ABI 动态解析，缺少导出时显式报错；它不是稳定 SDK API，测试不会调用。`SLActivateProduct` 使用 SDK 的正确参数类型封装，尚未执行联机调用。
+依据 Microsoft 文档核对 [SKU 属性与 LocalFree](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetproductskuinformation)、[IID 返回内存](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgenerateofflineinstallationid) 和 [状态结构查询](https://learn.microsoft.com/en-us/windows/win32/api/slpublic/nf-slpublic-slgetlicensingstatusinformation)。新增 Windows 测试覆盖 SDK 数据类型、错误保留、内存边界/字符串终止和真实只读 SLC 状态查询，不执行密钥安装、CID 导入或状态刷新。此阶段模块仅参与测试构建；v0.6.0-dev 已用于重置流程，完整激活调用链和实机验收仍待完成。非公开 `SLConsumeWindowsRight` 按固定上游 ABI 动态解析，缺少导出时显式报错；它不是稳定 SDK API，测试不会调用。`SLActivateProduct` 使用 SDK 的正确参数类型封装，尚未执行联机调用。
 
 ### TSforge 存储备份、回滚与服务协调（进行中）
 
@@ -152,6 +152,19 @@ Ohook 从 v0.5.0-dev 起直接从固定 `ohook-rs` 源码构建两种架构的 D
 
 服务协调保存初始运行状态，停止失败时不执行存储回调，并尝试恢复原本运行的服务；操作失败与恢复失败同时发生时保留两条错误。正常返回显式恢复，展开栈时提供 best-effort 恢复。原本停止的服务保持停止；后续激活流程仍需显式刷新许可状态。测试使用模拟服务，不改变开发机或 CI 的真实 SPP 服务状态。
 
-本轮文件测试覆盖成功写入/恢复、部分写入失败、多文件回滚、回滚失败后的显式恢复、损坏备份、目标不匹配、硬链接、重复/缺失路径、仅准备时不写入、转换验证失败；Windows 另验证独占句柄阻止并发写入。所有新增模块仍在测试构建中，未将 TSforge GUI 路由标为原生。
+本轮文件测试覆盖成功写入/恢复、部分写入失败、多文件回滚、回滚失败后的显式恢复、损坏备份、目标不匹配、硬链接、重复/缺失路径、仅准备时不写入、转换验证失败；Windows 另验证独占句柄阻止并发写入。此阶段新增模块仍在测试构建中；随后 v0.6.0-dev 接入了重置路由。
 
 上一轮 SL API 的 Windows CI [40111353095](https://github.com/undownding/MAS-rust/actions/runs/40111353095) 已通过测试和 Clippy，包括真实只读 SLC 状态查询；检查时 release 构建仍在执行。
+
+
+### v0.6.0-dev：TSforge 重置入口接入 Rust
+
+`/Z-Reset` 现在由 Rust 直接执行，GUI 将该按钮标为 Rust；其余 TSforge 激活按钮继续标为兼容。当前运行时支持现代存储布局（Windows build 9600 及更新版本），Vista/7/8 的字段规则已有单元测试，但旧版系统的存储文件发现、双文件同步和服务布局尚未接入，明确报错而不静默切回脚本。
+
+流程遵循上游顺序：清理 tamper 标记并刷新许可状态；在一次服务停止期间重置 rearm 计数与宽限/评估计时器，再刷新；最后清理密钥变更锁。运行前检查权限、架构、系统构建及刷新 API 可用性。按注册表 TokenStore 和上游标准路径查找 data.dat；根据 RSA 签名及解密完整性验证选择生产/测试密钥，不猜测首个 WPA 注册表项。
+
+每阶段持有独占文件句柄后解析、修改、序列化并重新解析，再加密及解密核对；写入前记录持久备份路径。没有对应记录时不重写存储。失败会说明已完成阶段数量；先前已完成阶段不自动撤销。服务恢复保留初始运行状态。此路径不调用 PowerShell，也不修改 tokens.dat。
+
+新增字段规则测试覆盖版本差异、大小写敏感子串匹配、未知字段保留、幂等性；加密集成测试覆盖两套密钥下的重置及损坏存储拒绝。重置不代表激活成功。尚无真实 Windows 许可存储重置的实机证据，严格解析可能拒绝未覆盖布局；仍需补充真实样本、显式恢复 GUI 与中断恢复入口，继续迁移 SCID/ZCID/KMS4k 等激活流程。原来的总体迁移清单保持未完成。
+
+本轮验证：63 项本地测试通过，Linux 与 Windows GNU 交叉 Clippy 通过；实际 Linux GUI 截图已更新。前两轮 Windows CI 40111353095（SL API）和 40111877322（事务/服务协调）均已全部成功。这些结果不能代替在真实 Windows 许可存储上执行本轮重置的验收。

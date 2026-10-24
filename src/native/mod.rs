@@ -43,6 +43,5 @@ mod hook_policy;
 #[path = "../../build_support/pe.rs"]
 mod pe_tests;
 
-// Storage codecs are exercised independently before enabling TSforge writes.
-#[cfg(test)]
-mod tsforge;
+#[cfg(any(windows, test))]
+pub mod tsforge;

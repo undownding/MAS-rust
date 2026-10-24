@@ -400,7 +400,7 @@ impl Context {
 /// This private export has no SDK binding. Resolve it at runtime so a missing
 /// export becomes an explicit error, rather than preventing the GUI from loading.
 /// The ABI matches the pinned upstream SLApi declaration; this is not a stable API.
-pub fn refresh_license_status() -> Result<()> {
+fn license_refresher() -> Result<unsafe extern "system" fn(u32) -> i32> {
     use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
     let name = wide("slc.dll")?;
     // slc.dll is already loaded through the public SDK imports above. A borrowed
@@ -415,6 +415,13 @@ pub fn refresh_license_status() -> Result<()> {
             code: 0x8007007f,
         })?;
     let function: unsafe extern "system" fn(u32) -> i32 = unsafe { std::mem::transmute(function) };
+    Ok(function)
+}
+pub fn ensure_refresh_available() -> Result<()> {
+    license_refresher().map(|_| ())
+}
+pub fn refresh_license_status() -> Result<()> {
+    let function = license_refresher()?;
     check("SLConsumeWindowsRight", unsafe { function(0) })
 }
 

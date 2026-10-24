@@ -12,6 +12,13 @@ use sha1::{Digest, Sha1};
 use std::io::Result;
 
 #[derive(Clone, Copy, Debug)]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "legacy envelope versions await native store routing"
+    )
+)]
 pub enum Version {
     Vista,
     Win7,

@@ -1,11 +1,19 @@
 //! TSforge codecs ported from the pinned MAS LibTSforge source (GPL-3.0-only).
-//! Staged under tests until authenticated storage and transactional writes exist.
+//! Reset is native; activation and token modification routes are still being migrated.
 mod binary;
 mod crypto;
 mod physical;
+mod reset;
 mod service;
 #[cfg(windows)]
 mod sl;
+#[cfg(test)]
 mod token;
 mod transaction;
+#[cfg(test)]
 mod variable_bag;
+
+#[cfg(windows)]
+mod runtime;
+#[cfg(windows)]
+pub use runtime::reset;
