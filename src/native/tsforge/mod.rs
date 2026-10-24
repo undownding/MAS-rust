@@ -67,10 +67,14 @@ mod product_selection;
 mod selection_runtime;
 
 mod activation_flow;
+mod connectivity;
 mod esu;
 #[cfg(windows)]
 mod esu_runtime;
+#[cfg(windows)]
+pub use esu_runtime::activate as activate_esu;
 mod kms_cleanup;
+mod reevaluation;
 #[cfg(windows)]
 mod windows_context;
 #[cfg(windows)]

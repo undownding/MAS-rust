@@ -340,6 +340,9 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
         }
         Plan::AlreadyPermanent => Ok(Some("Windows 已永久激活，未修改许可或 KMS 配置。".into())),
         Plan::Activate { sku, method } => {
+            let method = super::connectivity::resolve(method, option == 0, || {
+                super::connectivity::connected(report)
+            })?;
             report(&format!("原生 Rust TSforge：{sku} · {method:?}"));
             let mut backend = activation_flow::Native {
                 report,
@@ -349,7 +352,9 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
                     None
                 },
             };
-            activation_flow::run(&mut backend, sku, method).map(Some)
+            let result = activation_flow::run(&mut backend, sku, method);
+            super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
+                .map(Some)
         }
     }
 }

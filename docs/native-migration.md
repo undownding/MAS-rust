@@ -23,7 +23,7 @@
 | HWID | `HWIDActivation`、`hwiddata`、`sign` | 匹配 SKU/Activation ID、生成并签名 GenuineTicket、ClipSVC 导入、联机激活 | 主要流程已迁移 Rust；未移植所有修复分支 |
 | KMS38 | 历史文件 `k_menu2`、`kms38data`、`sign` | GVLK、2038 票据、专用 KMS 主机、SKU rearm、宽限期检查 | 主要流程已迁移 Rust；新构建在任何密钥修改前拒绝 |
 | Ohook | `OhookActivation`、`oh_process`、`oh_hookinstall` | 检测 Office C2R/MSI 和架构、安装许可、部署 hook DLL、处理订阅许可与卸载 | Rust DLL 源码构建、许可准备、部署及卸载已接入；边缘修复分支与实机验收仍待完成 |
-| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows 单项（build 9600+ 非评估版）及重置已接入 Rust；其他范围仍兼容 |
+| TSforge | `TSforgeActivation`、`tsforge` | 嵌入约 5,000 行 C#；SPP API、密钥配置、物理许可存储、密码学、SCID/ZCID/KMS4k | Windows/ESU 单项（build 9600+，Windows 评估版除外）及重置已接入 Rust；其他范围仍兼容 |
 | Online KMS | `KMSActivation`、`_taskact`、`_act` | 版本/通道转换、GVLK、服务器重试、续期任务、卸载 | Windows / 已安装 Office KMSCLIENT 的激活、重试和续期已迁移；新增 C2R 许可转换与 MSI 批量许可准备；清理/修复分支仍有缺口 |
 | 高级工具 | 版本切换、排障、OEM 提取 | 组件修复、Office 安装器、系统版本切换、生成部署脚本 | 保留上游交互菜单 |
 
@@ -61,7 +61,7 @@ Office 订阅缓存/屏蔽清理已接入原生 API；仍未迁移冲突旧密�
 - KMS38 未迁移 ACL 解锁/保护修复、Server Core 缺失系统组件处理等分支；仅支持保守判定的旧构建，不恢复系统已删除的许可机制。
 - Office 多版本并存时，密钥安装按有相应许可证的提供程序选择；复杂并存场景需要实测。
 - 原生“设置/清除 KMS”作用于所选 Windows / Office 已安装许可证的专用设置，不清除其他产品或全局 KMS 默认值。
-- TSforge 的 Office/ESU/组合/KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
+- TSforge 的 Office/组合/KMS Host/APPX、旧版/评估版 Windows，以及 Office 部分修复分支和高级菜单仍依赖 Windows PowerShell；入口明确标注。**当前不是完整的纯 Rust MAS。**
 
 ### TSforge 后续迁移依赖
 
@@ -369,3 +369,12 @@ GUI 范围标签、README、版本号同步至 dev.4；更新真实 Linux 预览
 `esu_runtime.rs` 使用原生 SLC 枚举 Windows SKU，以系统包文件识别 Server/Embedded 标志，连接现代 PKEY 安装和 SCID/ZeroCID 执行链。明确拒绝 KMS4k，旧存储返回兼容准备结果；多产品逐项执行并保留每项错误和已完成数量，不将部分成功报告成全部成功。全部成功且包含 Windows 10 Year3/Year6 时，调用系统自带 ClipESUConsumer/ClipESU 后处理（文件不存在则跳过），使用受控参数、无 shell、60 秒超时与退出码检查；未移植这些闭源系统组件本身。
 
 121 项本地测试及双平台 Clippy 通过，新增 ESU UBR 边界、目录交集/顺序、LTSC/Embedded 特例以及批量失败继续与后处理条件测试。Windows 专用测试只读取实际系统包和 SLC 许可证，不执行激活或后处理程序。当前 GUI ESU 按钮仍为兼容入口：Auto 模式的联网/离线判断和公共 SPP 任务重评估尚待接入后再启用。没有界面或测试包变化；本地 dev.4 仍对应上一轮已启用的 Windows 单项流程。
+
+
+### 联网预检查、SPP 重评估与 ESU GUI 入口（v0.6.0-dev.5）
+
+新增 `connectivity.rs`：对应上游从 ping 标题提取解析地址的语义，使用 Rust DNS 解析四个固定域名，不启动 ping/PowerShell；未解析到地址时查询 Network List Manager。DNS 工作线程等待上限为 30 秒，系统解析调用可能在后台稍后结束，不声称能够取消系统 DNS 查询。预检查不是激活服务可达性保证。只有 StaticCID 检查联网；Auto 离线回退 KMS4k，ESU 随即拒绝不支持的 KMS4k，显式 StaticCID 离线直接报错，均在安装密钥前停止。
+
+新增 `reevaluation.rs`：预先从系统 sppc.dll 解析 SLpTriggerServiceWorker，清除 NetworkService 的 PersistedSystemState 下 State/SuppressRulesEngine 两个固定值、回读验证，暂停 SPP 后提交 reeval 请求，并复用服务恢复协调器。请求是异步的，不用它宣称激活成功；无论之前的激活结果成功或失败，都保留原结果/备份信息，重评估错误另行合并。此处清理不在许可存储备份范围内。
+
+ESU 按钮现已接入现代原生后端，旧存储仍明确转兼容；Windows/ESU 的原生失败不会自动再运行兼容激活。更新版本、README 和真实预览截图，构建 dev.5 Windows 本地测试包。新增联网决策、错误合并测试，以及 Windows 专用的只读 NLM 查询/系统导出加载测试；不执行真实重评估或激活。123 项本地测试及双平台 Clippy 通过。Windows 入口/清理 CI 40120110681 已成功，ESU 发现 CI 40120508435 仍在运行，新联网/SPP 调用还待本次 Windows CI 验证。

@@ -1,4 +1,4 @@
-//! Modern ESU orchestration; scope dispatcher integration is still in progress.
+//! Modern ESU orchestration with connectivity gating and SPP reevaluation.
 #![allow(dead_code)]
 use super::{
     activation_flow::{self, Method},
@@ -115,11 +115,14 @@ fn system_esu_tool(file: &str, args: &[&str], report: &dyn Fn(&str)) -> Result<(
     }
 }
 
-/// Internal until common SPP reevaluation and GUI scope routing are connected.
+/// Internal until the GUI scope route is enabled.
 /// Old stores return None before any activation; errors do not request fallback.
 pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, String> {
     if !crate::process::is_admin() {
         return Err("请以管理员身份运行".into());
+    }
+    if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|value| !value.is_empty()) {
+        return Err("原生 TSforge 不支持跨架构仿真，请使用本机 x64 构建".into());
     }
     let context = Context::read(report)?;
     if context.build < 9600 {
@@ -132,6 +135,12 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
         3 => return Err("Windows ESU 不支持 KMS4k；请选择 StaticCID 或 ZeroCID".into()),
         _ => return Err("未知 TSforge 方法".into()),
     };
+    let method = super::connectivity::resolve(method, option == 0, || {
+        super::connectivity::connected(report)
+    })?;
+    if method == Method::Kms4k {
+        return Err("Auto 模式未确认联网，ESU 不支持离线 KMS4k，未执行激活".into());
+    }
     let products = match prepare(&context)? {
         Selection::Products(products) => products,
         Selection::Ltsc => {
@@ -186,16 +195,19 @@ pub fn activate(option: usize, report: &dyn Fn(&str)) -> Result<Option<String>, 
             }
         }
     }
-    if !errors.is_empty() {
-        return Err(format!(
+    let result = if !errors.is_empty() {
+        Err(format!(
             "ESU 已完成 {succeeded}/{} 项许可验证；存在失败，已完成的修改不会自动回滚：\n{}",
             products.len(),
             errors.join("\n")
-        ));
-    }
-    Ok(Some(format!(
-        "ESU 已完成 {succeeded} 项许可验证。许可证状态不代表所有年份均可通过 Windows Update 获取更新。"
-    )))
+        ))
+    } else {
+        Ok(format!(
+            "ESU 已完成 {succeeded} 项许可验证。许可证状态不代表所有年份均可通过 Windows Update 获取更新。"
+        ))
+    };
+    super::reevaluation::finish(result, || super::reevaluation::run(context.build, report))
+        .map(Some)
 }
 
 #[cfg(test)]

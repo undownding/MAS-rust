@@ -88,7 +88,7 @@ impl MasApp {
     }
     fn activation(&mut self, ui: &mut egui::Ui) {
         ui.heading("Windows & Office");
-        ui.label("HWID / Ohook / KMS38 / Online KMS 使用 Rust；TSforge Windows 与重置已接入原生流程，范围见下方。进度与错误见日志页。");
+        ui.label("HWID / Ohook / KMS38 / Online KMS 使用 Rust；TSforge Windows、ESU 与重置已接入原生流程，范围见下方。进度与错误见日志页。");
         ui.add_space(8.0);
         ui.collapsing("高级选项", |ui| {
             ui.checkbox(
@@ -123,7 +123,7 @@ impl MasApp {
                     ui.colored_label(Color32::from_rgb(245,172,92), "历史功能：上游已移除；build 26100.7019 起相关机制失效。请核对系统兼容性。");
                 }
                 if category == "Ohook" {ui.label("安装与卸载使用 Rust，内嵌 DLL 从 Rust 源码构建；安装后请重启 Office 检查效果。");}
-                if category == "TSforge" { ui.label("Windows 单项：build 9600+ 非评估版使用 Rust；旧版/评估版及其他激活入口仍兼容。原生激活待实机验收，重置不等于激活。"); }
+                if category == "TSforge" { ui.label("Windows / ESU 单项：build 9600+ 使用 Rust；Windows 评估版、旧版及其他激活入口仍兼容。原生激活待实机验收，重置不等于激活。"); }
                 if category == "Online KMS" {
                     ui.label("原生支持 Windows、Office C2R 许可转换和 MSI 批量许可；可禁止自动转换。高级选项可指定服务器和端口，旧任务卸载仍在兼容菜单。");
                 }
@@ -140,7 +140,7 @@ impl MasApp {
                 }
                 ui.horizontal_wrapped(|ui| {
                     for op in engine::OPERATIONS.iter().filter(|op| op.category == category) {
-                        if ui.button(format!("{} · {}", op.title, if op.args == ["/Z-Windows"] { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
+                        if ui.button(format!("{} · {}", op.title, if matches!(op.args, ["/Z-Windows"] | ["/Z-ESU"]) { "Rust / 兼容" } else if engine::is_native(*op) { "Rust" } else { "兼容" })).clicked() { self.pending = Some(Job::Engine(*op, self.options.clone())); }
                     }
                 });
             });

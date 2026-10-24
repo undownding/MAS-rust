@@ -195,6 +195,12 @@ pub fn run(op: Operation, options: Options, report: &dyn Fn(&str)) -> Result<Str
             None => run_compatibility(op, options, report),
         };
     }
+    if op.args == ["/Z-ESU"] {
+        return match crate::native::tsforge::activate_esu(options.ts_method, report)? {
+            Some(result) => Ok(result),
+            None => run_compatibility(op, options, report),
+        };
+    }
     if op.args == ["/Z-Reset"] {
         return crate::native::tsforge::reset(report);
     }
@@ -233,7 +239,7 @@ pub fn restore_tsforge(backup: &str, report: &dyn Fn(&str)) -> Result<String, St
 pub fn is_native(op: Operation) -> bool {
     matches!(
         op.args,
-        ["/Ohook"] | ["/Ohook-Uninstall"] | ["/Z-Reset"] | ["/Z-Windows"]
+        ["/Ohook"] | ["/Ohook-Uninstall"] | ["/Z-Reset"] | ["/Z-Windows"] | ["/Z-ESU"]
     ) || (!op.args.is_empty() && matches!(op.category, "HWID" | "KMS38" | "Online KMS"))
 }
 
@@ -370,6 +376,7 @@ mod tests {
                     ["/HWID"]
                         | ["/Z-Reset"]
                         | ["/Z-Windows"]
+                        | ["/Z-ESU"]
                         | ["/Ohook"]
                         | ["/Ohook-Uninstall"]
                         | ["/KMS38"]
