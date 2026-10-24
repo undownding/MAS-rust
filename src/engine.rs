@@ -272,6 +272,29 @@ pub fn repair_system(
     }
 }
 
+pub fn rebuild_wmi(report: &dyn Fn(&str)) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        crate::native::wmi_repair::rebuild(report)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = report;
+        Err("WMI 重建需要 Windows".into())
+    }
+}
+pub fn restore_wmi(backup: &str, report: &dyn Fn(&str)) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        crate::native::wmi_repair::restore(std::path::Path::new(backup), report)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (backup, report);
+        Err("WMI 恢复需要 Windows".into())
+    }
+}
+
 pub fn repair_wmi(fix: bool, report: &dyn Fn(&str)) -> Result<String, String> {
     #[cfg(windows)]
     {

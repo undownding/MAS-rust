@@ -48,6 +48,13 @@ pub fn paused<C: Control, T>(
     control: &mut C,
     operation: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
+    coordinated(control, true, operation)
+}
+fn coordinated<C: Control, T>(
+    control: &mut C,
+    disable_restart: bool,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
     let state = control.snapshot()?;
     let mut guard = Guard {
         control,
@@ -55,7 +62,9 @@ pub fn paused<C: Control, T>(
         finished: false,
     };
     let result = (|| {
-        guard.control.configure(4)?; // SERVICE_DISABLED: no automatic restart while moving files.
+        if disable_restart {
+            guard.control.configure(4)?;
+        } // Registration may start WMI; repository moves may not.
         for name in &guard.state.dependents {
             guard.control.service(name, false)?;
         }
@@ -295,9 +304,11 @@ mod native {
             crate::native::platform::service(name, start)
         }
     }
-    #[allow(dead_code, reason = "wired to the forthcoming WMI rebuild adapter")]
     pub fn stopped<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
         paused(&mut Native::new()?, operation)
+    }
+    pub fn registration<T>(operation: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        coordinated(&mut Native::new()?, false, operation)
     }
     #[cfg(test)]
     #[test]
@@ -309,8 +320,7 @@ mod native {
     }
 }
 #[cfg(windows)]
-#[allow(unused_imports)]
-pub use native::stopped;
+pub use native::{registration, stopped};
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -374,6 +384,18 @@ mod tests {
         };
         assert!(paused(&mut fake, || Err::<(), _>("repository failure".into())).is_err());
         assert!(!fake.events.iter().any(|s| s == "Winmgmt:true"));
+    }
+    #[test]
+    fn registration_stops_dependencies_but_allows_provider_tools_to_start_wmi() {
+        let mut fake = Fake {
+            events: vec![],
+            fail: None,
+            running: true,
+        };
+        coordinated(&mut fake, false, || Ok(())).unwrap();
+        assert!(!fake.events.iter().any(|e| e == "config:4"));
+        assert!(fake.events.iter().any(|e| e == "Winmgmt:false"));
+        assert!(fake.events.iter().any(|e| e == "Winmgmt:true"));
     }
     #[test]
     fn every_pause_failure_restores_configuration_and_skips_repository() {

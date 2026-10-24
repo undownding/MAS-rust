@@ -61,10 +61,16 @@ mod native {
     use wmi::{WMIConnection, WMIError};
     struct Native<'a> {
         report: &'a dyn Fn(&str),
+        plan: Option<Vec<crate::native::wmi_rebuild::Command>>,
     }
-    fn command(arg: &str, report: &dyn Fn(&str)) -> Result<(), String> {
-        let mut child = Command::new(platform::system_file(r"wbem\winmgmt.exe")?)
-            .arg(arg)
+    fn command_args(
+        executable: &std::path::Path,
+        args: &[std::ffi::OsString],
+        report: &dyn Fn(&str),
+    ) -> Result<(), String> {
+        let arg = format!("{} {:?}", executable.display(), args);
+        let mut child = Command::new(executable)
+            .args(args)
             .creation_flags(0x08000000)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -76,23 +82,30 @@ mod native {
         loop {
             if let Some(status) = child
                 .try_wait()
-                .map_err(|e| format!("winmgmt 进程可能仍运行：{e}"))?
+                .map_err(|e| format!("修复进程可能仍运行：{e}"))?
             {
                 return match status.code() {
                     Some(0) => Ok(()),
-                    Some(code) => Err(format!("winmgmt {arg}：{code} (0x{:08X})", code as u32)),
-                    None => Err("winmgmt 未返回退出码".into()),
+                    Some(code) => Err(format!("{arg}：{code} (0x{:08X})", code as u32)),
+                    None => Err("修复进程未返回退出码".into()),
                 };
             }
             if start.elapsed() >= next {
                 report(&format!(
-                    "winmgmt {arg} 仍在运行，已等待 {} 秒",
+                    "{arg} 仍在运行，已等待 {} 秒",
                     start.elapsed().as_secs()
                 ));
                 next = start.elapsed() + Duration::from_secs(15);
             }
             std::thread::sleep(Duration::from_millis(250));
         }
+    }
+    fn command(arg: &str, report: &dyn Fn(&str)) -> Result<(), String> {
+        command_args(
+            &platform::system_file(r"wbem\winmgmt.exe")?,
+            &[arg.into()],
+            report,
+        )
     }
     fn query(
         connection: &WMIConnection,
@@ -181,6 +194,96 @@ mod native {
             command("/salvagerepository", self.report)
         }
     }
+    impl crate::native::wmi_rebuild::Rebuild for Native<'_> {
+        fn prepare(&mut self) -> Result<(), String> {
+            self.plan = Some(crate::native::wmi_rebuild::registration_plan(
+                &platform::system_file("")?,
+            )?);
+            Ok(())
+        }
+        fn quarantine(&mut self) -> Result<String, String> {
+            let repository = platform::system_file(r"wbem\Repository")?;
+            let mut checkpoint = None;
+            let result = crate::native::wmi_service::stopped(|| {
+                if !repository.try_exists().map_err(|e| e.to_string())? {
+                    (self.report)("WMI 原仓库不存在；恢复服务后重新检查。");
+                    return Ok("原仓库不存在，无目录备份".to_owned());
+                }
+                let backup = crate::native::wmi_repository::quarantine(&repository)
+                    .map_err(|e| e.to_string())?;
+                let path = backup.root.display().to_string();
+                checkpoint = Some(path.clone());
+                (self.report)(&format!("WMI 原仓库已保留：{path}"));
+                Ok(path)
+            });
+            result.map_err(|e| format!("WMI 仓库阶段失败：{e}；备份：{checkpoint:?}"))
+        }
+        fn register(&mut self) -> Result<(), String> {
+            let plan = self.plan.take().ok_or("未准备 WMI 提供程序注册计划")?;
+            crate::native::wmi_service::registration(|| {
+                let mut errors = vec![];
+                for item in plan {
+                    (self.report)(&format!(
+                        "运行 {} {:?}",
+                        item.executable.display(),
+                        item.args
+                    ));
+                    if let Err(e) = command_args(&item.executable, &item.args, self.report) {
+                        errors.push(e);
+                    }
+                }
+                if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors.join("\n"))
+                }
+            })
+        }
+    }
+    pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String, String> {
+        let _guard = crate::native::session::OperationGuard::acquire()?;
+        if !crate::process::is_admin() {
+            return Err("请以管理员身份运行".into());
+        }
+        if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|v| !v.is_empty()) {
+            return Err("WMI 恢复不支持跨架构仿真".into());
+        }
+        let mut native = Native { report, plan: None };
+        if native.server()? {
+            return Err("Windows Server 不执行此 WMI 仓库恢复".into());
+        }
+        let repository = platform::system_file(r"wbem\Repository")?;
+        let loaded = crate::native::wmi_repository::Backup::load(backup, &repository)
+            .map_err(|e| e.to_string())?;
+        let mut replacement = None;
+        crate::native::wmi_service::stopped(|| {
+            replacement = loaded.restore().map_err(|e| e.to_string())?;
+            report(&format!("原仓库已恢复；替换前仓库备份：{replacement:?}"));
+            Ok(())
+        })
+        .map_err(|e| format!("WMI 恢复失败：{e}；替换前仓库：{replacement:?}"))?;
+        let health = native.check()?;
+        if health.healthy() {
+            Ok(format!(
+                "WMI 仓库恢复后检查通过；替换前仓库备份：{replacement:?}"
+            ))
+        } else {
+            Err(format!(
+                "WMI 仓库已恢复但检查仍异常：{}；替换前仓库：{replacement:?}",
+                health.failures.join("；")
+            ))
+        }
+    }
+    pub fn rebuild(report: &dyn Fn(&str)) -> Result<String, String> {
+        let _guard = crate::native::session::OperationGuard::acquire()?;
+        if !crate::process::is_admin() {
+            return Err("请以管理员身份运行".into());
+        }
+        if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|v| !v.is_empty()) {
+            return Err("WMI 重建不支持跨架构仿真".into());
+        }
+        crate::native::wmi_rebuild::run(&mut Native { report, plan: None })
+    }
     pub fn run(fix: bool, report: &dyn Fn(&str)) -> Result<String, String> {
         let _guard = crate::native::session::OperationGuard::acquire()?;
         if !crate::process::is_admin() {
@@ -189,7 +292,7 @@ mod native {
         if std::env::var("PROCESSOR_ARCHITEW6432").is_ok_and(|v| !v.is_empty()) {
             return Err("WMI 检查/修复不支持跨架构仿真".into());
         }
-        let mut native = Native { report };
+        let mut native = Native { report, plan: None };
         if fix {
             repair(&mut native)
         } else {
@@ -206,7 +309,7 @@ mod native {
     }
 }
 #[cfg(windows)]
-pub use native::run;
+pub use native::{rebuild, restore, run};
 #[cfg(test)]
 mod tests {
     use super::*;

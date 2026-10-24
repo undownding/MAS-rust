@@ -11,7 +11,7 @@
 
 [功能](#功能) · [界面预览](#界面预览) · [获取与使用](#获取与使用) · [构建与运行](#构建与运行) · [验证范围](#验证范围)
 
-**v0.6.0-dev.22：工具箱新增原生 WMI 检查与基础修复；TSforge 已列出的单项、组合和重置入口均使用 Rust。GUI 最低 Windows 版本不变，旧版后端仍待实机验收。**
+**v0.6.0-dev.23：接入原生 WMI 完整重建与仓库备份恢复；TSforge 已列出的单项、组合和重置入口均使用 Rust。GUI 最低 Windows 版本不变，旧版后端仍待实机验收。**
 原生路径直接调用 COM/WMI、Windows 服务与许可 API，不启动 PowerShell；票据签名由 Rust 实现，导入使用 Windows 自带的 `clipup.exe`。
 
 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口已连接原生 SKU/订阅识别、产品选择、生成密钥安装、激活与结果校验；Windows 单项含评估版、ESU（含 Vista/Server 2008 专用分支）和 Win8 APPX 已连接旧版存储后端；Vista/Win7 组合也使用 Rust 并按上游跳过不适用的 Office 范围；这些入口不再转入兼容脚本。重置与备份恢复也使用 Rust。部分修复/高级工具仍使用固定版本的上游脚本。**这还不是完整的纯 Rust MAS**，实现范围与剩余工作见 [核心分析与迁移记录](docs/native-migration.md)。
@@ -39,7 +39,8 @@ TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 单项入口�
 
 | 功能 | 入口 |
 | --- | --- |
-| WMI 检查 / 基础修复 | Rust COM 查询与仓库校验；异常时单次 salvage 后复查，Server 跳过修复；完整仓库重建仍待迁移 |
+| WMI 完整重建 / 恢复 | Rust 协调服务、保留原仓库、复查及提供程序注册；可恢复本机备份，Server 跳过，实际修复效果待验收 |
+| WMI 检查 / 基础修复 | Rust COM 查询与仓库校验；异常时单次 salvage 后复查，Server 跳过修复；完整重建另有独立入口 |
 | DISM / SFC 系统修复 | Rust 启动系统程序，桌面 AT_Logs 保存原始输出、修复前后日志和 MSZIP CAB 压缩副本；不自动重启，结果仍需检查 |
 | Office 快速修复 | Rust 发现并启动本机 MSI 2010–2016 / C2R 2013 / C2R 2016+ 修复程序；2010 C2R 和 UWP 跳过，退出码不代表结果验收 |
 | HWID | 原生 Rust 主流程，支持禁止自动更改版本 |
@@ -136,7 +137,7 @@ DLL 基于固定版本的 [ohook-rs](https://github.com/massgravel/ohook-rs/tree
 - 续期程序复制到 `%ProgramFiles%\MAS-Rust\Renewal`，因此可移动原始下载文件。最近续期日志为该目录下的 `last-renewal.log`。
 - 原生卸载删除本程序的续期任务并清除许可证专用 KMS 设置，保留产品密钥和 KMS38；程序副本与日志会保留，上游旧任务需在兼容菜单卸载。
 
-v0.6.0-dev.22 的 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
+v0.6.0-dev.23 的 TSforge Windows / Office / Project / Visio / ESU / KMS Host / APPX 和重置、v0.5.0-dev 的 Ohook 安装、Office 转换、缓存清理及卸载，以及 v0.3.0 新增的 WMI 激活和计划任务仍待 Windows 实机验证；此前用户反馈仅针对 v0.2.0。
 
 ## 构建与运行
 

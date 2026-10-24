@@ -62,3 +62,6 @@ mod wmi_repository;
 
 #[cfg(any(windows, test))]
 mod wmi_service;
+
+#[cfg(any(windows, test))]
+mod wmi_rebuild;

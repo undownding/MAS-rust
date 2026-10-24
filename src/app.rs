@@ -28,6 +28,8 @@ enum Job {
     RestoreBackup(String),
     RepairOffice,
     Wmi(bool),
+    RebuildWmi,
+    RestoreWmi(String),
     RepairSystem(crate::native::system_repair::Kind),
 }
 
@@ -40,6 +42,7 @@ pub struct MasApp {
     port: String,
     options: Options,
     backup_directory: String,
+    wmi_backup_directory: String,
     pending: Option<Job>,
     receiver: Option<mpsc::Receiver<Event>>,
     log: String,
@@ -57,6 +60,7 @@ impl Default for MasApp {
             port: "1688".into(),
             options: Options::default(),
             backup_directory: String::new(),
+            wmi_backup_directory: String::new(),
             pending: None,
             receiver: None,
             log: "准备就绪。选择功能后查看并确认操作。\n".into(),
@@ -79,6 +83,8 @@ impl MasApp {
             };
             let result = match job {
                 Job::RepairSystem(kind) => engine::repair_system(kind, &report),
+                Job::RebuildWmi => engine::rebuild_wmi(&report),
+                Job::RestoreWmi(path) => engine::restore_wmi(&path, &report),
                 Job::Wmi(fix) => engine::repair_wmi(fix, &report),
                 Job::RepairOffice => engine::repair_office(&report),
                 Job::Engine(op, options) => engine::run(op, options, &report),
@@ -133,10 +139,18 @@ impl MasApp {
                     ui.horizontal(|ui| {
                         if ui.button("WMI 检查 · Rust").clicked() { self.pending = Some(Job::Wmi(false)); }
                         if ui.button("WMI 基础修复 · Rust").clicked() { self.pending = Some(Job::Wmi(true)); }
+                        if ui.button("WMI 完整重建 · Rust").clicked() { self.pending = Some(Job::RebuildWmi); }
                     });
                     ui.horizontal(|ui| {
                         if ui.button("DISM 系统映像修复 · Rust").clicked() { self.pending = Some(Job::RepairSystem(crate::native::system_repair::Kind::Dism)); }
                         if ui.button("SFC 系统文件修复 · Rust").clicked() { self.pending = Some(Job::RepairSystem(crate::native::system_repair::Kind::Sfc)); }
+                    });
+                }
+                if category == "工具箱" {
+                    ui.collapsing("恢复本机 WMI 仓库备份", |ui| {
+                        ui.text_edit_singleline(&mut self.wmi_backup_directory);
+                        let path=self.wmi_backup_directory.trim().trim_matches('"');
+                        if ui.add_enabled(!path.is_empty(),egui::Button::new("恢复 WMI 备份 · Rust")).clicked() {self.pending=Some(Job::RestoreWmi(path.to_owned()));}
                     });
                 }
                 if category == "工具箱" && ui.button("Office 快速修复 · Rust").clicked() { self.pending = Some(Job::RepairOffice); }
@@ -396,6 +410,14 @@ impl MasApp {
                         Job::RepairSystem(kind) => {
                             ui.label(format!("系统修复：{kind:?}"));
                             ui.label("将修改系统组件或系统文件，可能持续十几分钟或更久，请保持程序开启。建议先运行 DISM，再运行 SFC。DISM 可能使用 Windows Update 下载修复文件，需要可用网络。原始输出及修复前后诊断日志保存在桌面 AT_Logs；不自动重启。");
+                        }
+                        Job::RebuildWmi => {
+                            ui.label("WMI 完整重建");
+                            ui.label("先检查并尝试基础修复，仍异常时停止 WMI 与活动依赖服务，将原仓库保留到系统 WBEM 目录，再重建并复查。必要时重新注册 DLL、编译 MOF/MFL 并重置仓库。第三方提供程序可能需要重新安装。Windows Server 跳过；不会自动重启。");
+                        }
+                        Job::RestoreWmi(path) => {
+                            ui.label("恢复 WMI 仓库备份");ui.monospace(path);
+                            ui.label("将停止 WMI 与活动依赖服务，用所选本机备份替换仓库；当前仓库也会保留到新的备份目录。仓库文件恢复不会撤销期间发生的其他提供程序注册变更。");
                         }
                         Job::Wmi(fix) => {
                             ui.label(if *fix { "WMI 基础修复" } else { "WMI 检查" });
