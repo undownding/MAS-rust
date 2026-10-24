@@ -130,7 +130,7 @@ impl MasApp {
                 if category == "工具箱" { ui.label("打开完整上游菜单：查询状态、更改 Windows / Office 版本、故障排查、提取 $OEM$、帮助及其他高级设置。"); }
                 if category == "TSforge" {
                     ui.collapsing("恢复本机 TSforge 备份", |ui| {
-                        ui.label("粘贴日志中的阶段备份目录。恢复会替换当前许可存储，并另行备份恢复前状态。");
+                        ui.label("粘贴日志中的备份目录。恢复会替换所选存储及备份中的产品注册表值，并另行备份当前状态。");
                         ui.add(egui::TextEdit::singleline(&mut self.backup_directory).desired_width(f32::INFINITY).hint_text("包含 manifest.json 的备份目录"));
                         let path = self.backup_directory.trim().trim_matches('"');
                         if ui.add_enabled(!path.is_empty(), egui::Button::new("恢复备份 · Rust")).clicked() {
@@ -359,9 +359,9 @@ impl MasApp {
                             }
                         }
                         Job::RestoreBackup(path) => {
-                            ui.label("恢复本机 TSforge 阶段备份");
+                            ui.label("恢复本机 TSforge 备份");
                             ui.monospace(path);
-                            ui.label("将当前许可存储恢复到所选备份时刻，覆盖该时刻之后的许可变化。仅使用本机备份；程序将验证目标路径、校验和及存储格式，并备份当前状态。此操作不代表激活成功。");
+                            ui.label("将许可存储和备份中的产品注册表值恢复到所选时刻，覆盖之后的许可变化。仅使用本机备份；程序将验证目标路径、校验和及存储格式，并备份当前状态。此操作不代表激活成功。");
                         }
                         Job::License(product, action) => {
                             ui.label(format!("{} · {}", product.name(), action.label()));

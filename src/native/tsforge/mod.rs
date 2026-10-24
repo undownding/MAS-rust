@@ -7,7 +7,7 @@ mod reset;
 mod service;
 #[cfg(windows)]
 mod sl;
-#[cfg(test)]
+#[cfg_attr(not(test), allow(dead_code))]
 mod token;
 mod transaction;
 #[cfg(test)]
@@ -30,3 +30,5 @@ mod product_key;
 
 #[cfg(windows)]
 mod registry_backup;
+
+mod registry_targets;

@@ -68,51 +68,7 @@ impl<'a> RegistryValues<'a> {
         })
     }
     pub fn from_backup(backup: &Path, targets: Vec<Target<'a>>) -> io::Result<Self> {
-        let manifest = read_backup(backup, "registry.json", 24 * 1024 * 1024)?;
-        let checksum = read_backup(backup, "registry.sha256", 32)?;
-        if checksum.as_slice() != Sha256::digest(&manifest).as_slice() {
-            return Err(invalid("registry backup checksum mismatch"));
-        }
-        let manifest: serde_json::Value = serde_json::from_slice(&manifest)?;
-        if manifest.get("version").and_then(|v| v.as_u64()) != Some(1) {
-            return Err(invalid("unsupported registry backup version"));
-        }
-        let values = manifest
-            .get("values")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| invalid("invalid registry backup entries"))?;
-        if values.len() != targets.len() || values.is_empty() || values.len() > 32 {
-            return Err(invalid("registry backup target count mismatch"));
-        }
-        let mut records = HashMap::new();
-        let mut total = 0usize;
-        for value in values {
-            let id = value
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| invalid("invalid registry backup ID"))?;
-            let original = decode(value.get("original"), &mut total)?;
-            // Validate the whole backup, even though only originals are restored.
-            decode(value.get("replacement"), &mut total)?;
-            if records.insert(id, original).is_some() {
-                return Err(invalid("duplicate registry backup ID"));
-            }
-        }
-        let mut edits = Vec::new();
-        for target in targets {
-            let replacement = records.remove(target.id).ok_or_else(|| {
-                invalid("registry backup differs from explicitly selected targets")
-            })?;
-            edits.push(Edit {
-                id: target.id,
-                key: target.key,
-                name: target.name,
-                replacement,
-            });
-        }
-        // Capture live state for undo, rather than treating the old replacement
-        // as current state: a partial installation may have changed only some values.
-        Self::capture(edits)
+        Backup::load(backup)?.capture(targets)
     }
     fn unchanged(&self) -> io::Result<()> {
         for saved in &self.values {
@@ -130,6 +86,66 @@ impl<'a> RegistryValues<'a> {
             }
         }
         Ok(())
+    }
+}
+/// Validated immutable snapshot; selection and recovery use the same bytes.
+pub struct Backup {
+    records: HashMap<String, Option<RawValue>>,
+}
+impl Backup {
+    pub fn load(backup: &Path) -> io::Result<Self> {
+        let manifest = read_backup(backup, "registry.json", 24 * 1024 * 1024)?;
+        let checksum = read_backup(backup, "registry.sha256", 32)?;
+        if checksum.as_slice() != Sha256::digest(&manifest).as_slice() {
+            return Err(invalid("registry backup checksum mismatch"));
+        }
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest)?;
+        if manifest.get("version").and_then(|v| v.as_u64()) != Some(1) {
+            return Err(invalid("unsupported registry backup version"));
+        }
+        let values = manifest
+            .get("values")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| invalid("invalid registry backup entries"))?;
+        if values.is_empty() || values.len() > 32 {
+            return Err(invalid("registry backup target count mismatch"));
+        }
+        let mut records = HashMap::new();
+        let mut total = 0usize;
+        for value in values {
+            let id = value
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| invalid("invalid registry backup ID"))?;
+            let original = decode(value.get("original"), &mut total)?;
+            // Validate the whole backup, even though only originals are restored.
+            decode(value.get("replacement"), &mut total)?;
+            if records.insert(id.to_owned(), original).is_some() {
+                return Err(invalid("duplicate registry backup ID"));
+            }
+        }
+        Ok(Self { records })
+    }
+    pub fn ids(&self) -> Vec<&str> {
+        self.records.keys().map(String::as_str).collect()
+    }
+    pub fn capture<'a>(mut self, targets: Vec<Target<'a>>) -> io::Result<RegistryValues<'a>> {
+        if self.records.len() != targets.len() {
+            return Err(invalid("registry backup target count mismatch"));
+        }
+        let mut edits = Vec::new();
+        for target in targets {
+            let replacement = self.records.remove(target.id).ok_or_else(|| {
+                invalid("registry backup differs from explicitly selected targets")
+            })?;
+            edits.push(Edit {
+                id: target.id,
+                key: target.key,
+                name: target.name,
+                replacement,
+            });
+        }
+        RegistryValues::capture(edits)
     }
 }
 fn read_backup(backup: &Path, name: &str, limit: u64) -> io::Result<Vec<u8>> {

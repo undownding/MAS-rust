@@ -1,9 +1,14 @@
 use super::{
+    registry_backup::{Backup, Target},
+    registry_targets,
     reset::{self, Step},
-    service, sl,
+    service, sl, token,
     transaction::{self, Transaction},
 };
-use crate::native::{platform, registry::Key};
+use crate::native::{
+    platform,
+    registry::{Hive, Key},
+};
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
 use windows_sys::Win32::System::{
     Environment::ExpandEnvironmentStringsW, Registry::KEY_WOW64_64KEY,
@@ -29,7 +34,7 @@ fn expand(value: &str) -> Result<PathBuf, String> {
     }
     Ok(path)
 }
-fn physical_path() -> Result<PathBuf, String> {
+fn store_path(filename: &str) -> Result<PathBuf, String> {
     if let Some(key) = Key::open(
         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SoftwareProtectionPlatform",
         KEY_WOW64_64KEY,
@@ -37,23 +42,23 @@ fn physical_path() -> Result<PathBuf, String> {
     )? && let Some(value) = key.string("TokenStore")?
         && !value.is_empty()
     {
-        let path = expand(&value)?.join("data.dat");
+        let path = expand(&value)?.join(filename);
         if path.is_file() {
             return Ok(path);
         }
     }
     for relative in [
-        r"spp\store\data.dat",
-        r"spp\store\2.0\data.dat",
-        r"spp\store_test\data.dat",
-        r"spp\store_test\2.0\data.dat",
+        r"spp\store",
+        r"spp\store\2.0",
+        r"spp\store_test",
+        r"spp\store_test\2.0",
     ] {
-        let path = platform::system_file(relative)?;
+        let path = platform::system_file(relative)?.join(filename);
         if path.is_file() {
             return Ok(path);
         }
     }
-    Err("未找到 Windows 物理许可存储 data.dat".into())
+    Err(format!("未找到 Windows 许可存储 {filename}"))
 }
 
 /// engine::run already holds the process-wide licensing-operation mutex.
@@ -79,7 +84,7 @@ fn preflight() -> Result<PathBuf, String> {
         return Err("原生 TSforge 存储操作尚未接入 Vista/Windows 7/8 的存储与服务布局。".into());
     }
     sl::ensure_refresh_available().map_err(|error| error.to_string())?;
-    physical_path()
+    store_path("data.dat")
 }
 
 pub fn reset(report: &dyn Fn(&str)) -> Result<String, String> {
@@ -151,16 +156,82 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
         path.display()
     ));
     let mut restored = false;
+    let mut cache = None;
     let result = service::stopped("sppsvc", || {
-        let undo = transaction::restore_validated(backup, &[path], |_, bytes| {
-            reset::decode_modern(bytes).map(|_| ())
-        })
+        let undo = if backup
+            .join("external-state-required")
+            .try_exists()
+            .map_err(|e| e.to_string())?
+        {
+            let saved_registry = Backup::load(backup).map_err(|e| e.to_string())?;
+            let specs =
+                registry_targets::select(&saved_registry.ids()).map_err(|e| e.to_string())?;
+            let keys: Vec<_> = specs
+                .iter()
+                .map(|spec| {
+                    Key::at(
+                        if spec.users {
+                            Hive::Users
+                        } else {
+                            Hive::Machine
+                        },
+                        spec.path,
+                        KEY_WOW64_64KEY,
+                        true,
+                    )?
+                    .ok_or_else(|| format!("恢复目标注册表键不存在：{}", spec.path))
+                })
+                .collect::<Result<_, String>>()?;
+            let targets = specs
+                .iter()
+                .zip(&keys)
+                .map(|(spec, key)| Target {
+                    id: spec.id,
+                    key,
+                    name: spec.name,
+                })
+                .collect();
+            let mut registry = saved_registry.capture(targets).map_err(|e| e.to_string())?;
+            let tokens = store_path("tokens.dat")?;
+            let cache_path = tokens
+                .parent()
+                .ok_or("令牌路径缺少父目录")?
+                .join("cache")
+                .join("cache.dat");
+            crate::native::hook_files::plain_ancestors(&cache_path)?;
+            cache = Some(cache_path);
+            report("正在校验并恢复 data.dat、tokens.dat 与已备份的产品注册表值。");
+            transaction::restore_participating(
+                backup,
+                &[path, tokens],
+                |index, bytes| {
+                    if index == 0 {
+                        reset::decode_modern(bytes).map(|_| ())
+                    } else {
+                        token::decode(bytes).map(|_| ())
+                    }
+                },
+                &mut registry,
+            )
+        } else {
+            transaction::restore_validated(backup, &[path], |_, bytes| {
+                reset::decode_modern(bytes).map(|_| ())
+            })
+        }
         .map_err(|error| error.to_string())?;
         restored = true;
         report(&format!(
-            "已恢复存储并完成回读校验。恢复前状态备份：{}",
+            "已恢复所选备份中的状态并完成回读校验。恢复前状态备份：{}",
             undo.display()
         ));
+
+        if let Some(cache) = &cache {
+            match std::fs::remove_file(cache) {
+                Ok(()) => report("已清理派生许可缓存，系统将重新生成。"),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("许可状态已恢复，但清理缓存失败：{error}")),
+            }
+        }
         Ok(())
     });
     if let Err(error) = result {
@@ -171,8 +242,5 @@ pub fn restore(backup: &std::path::Path, report: &dyn Fn(&str)) -> Result<String
     }
     sl::refresh_license_status()
         .map_err(|error| format!("存储已恢复，但许可状态刷新失败：{error}"))?;
-    Ok(
-        "已恢复所选阶段备份。恢复前的状态已另行备份，路径见日志；请检查 Windows/Office 状态。"
-            .into(),
-    )
+    Ok("已恢复所选备份。恢复前的状态已另行备份，路径见日志；请检查 Windows/Office 状态。".into())
 }
